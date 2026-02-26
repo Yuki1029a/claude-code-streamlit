@@ -78,11 +78,14 @@ class BackendClient:
 
     # --- プロンプト / ジョブ ---
 
-    def send_prompt(self, prompt: str, cwd: str, session_id: str = None) -> dict:
+    def send_prompt(self, prompt: str, cwd: str,
+                    session_id: str = None, model: str = None) -> dict:
         """プロンプトを送信してジョブを作成"""
         payload = {"prompt": prompt, "cwd": cwd}
         if session_id:
             payload["session_id"] = session_id
+        if model:
+            payload["model"] = model
         resp = self.session.post(
             f"{self.base_url}/api/prompt",
             json=payload,
@@ -153,3 +156,18 @@ class BackendClient:
             return None, None
         mime = resp.headers.get("Content-Type", "application/octet-stream")
         return resp.content, mime
+
+    # --- スクリーンショット ---
+
+    def get_screenshot(self) -> bytes | None:
+        """PCのスクリーンショットをJPEGバイトで取得"""
+        try:
+            resp = self.session.get(
+                f"{self.base_url}/api/screenshot",
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                return resp.content
+        except Exception:
+            pass
+        return None

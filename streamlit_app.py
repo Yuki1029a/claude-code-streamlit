@@ -106,6 +106,8 @@ def init_state():
         "is_streaming": False,
         "cancel_requested": False,
         "job_history": [],
+        "selected_model": "claude-sonnet-4-5",  # デフォルトモデル
+        "screenshot_bytes": None,               # 最新スクリーンショット
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -446,6 +448,27 @@ with st.sidebar:
 
     st.divider()
 
+    # ── モデル選択 ──
+    if st.session_state.connected:
+        st.subheader("モデル")
+        MODEL_OPTIONS = {
+            "claude-sonnet-4-5": "⚡ Sonnet 4.5（速い・安い）",
+            "claude-opus-4-5":   "🧠 Opus 4.5（賢い・高い）",
+            "claude-haiku-3-5":  "🐦 Haiku 3.5（最速・最安）",
+            "claude-opus-4":     "🧠 Opus 4",
+            "claude-sonnet-4":   "⚡ Sonnet 4",
+        }
+        selected_model = st.selectbox(
+            "Model",
+            options=list(MODEL_OPTIONS.keys()),
+            format_func=lambda x: MODEL_OPTIONS.get(x, x),
+            index=list(MODEL_OPTIONS.keys()).index(
+                st.session_state.selected_model
+            ) if st.session_state.selected_model in MODEL_OPTIONS else 0,
+            label_visibility="collapsed",
+        )
+        st.session_state.selected_model = selected_model
+
     # ── 作業ディレクトリ ──
     if st.session_state.connected and st.session_state.flat_dirs:
         st.subheader("作業ディレクトリ")
@@ -530,16 +553,28 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"ジョブ読み込みエラー: {e}")
 
-    # ── リフレッシュ ──
+    # ── スクリーンショット / リフレッシュ ──
     if st.session_state.connected:
         st.divider()
-        if st.button("🔄 履歴を更新", use_container_width=True):
-            try:
-                jobs = st.session_state.client.list_jobs()
-                st.session_state.job_history = jobs
-                st.rerun()
-            except Exception as e:
-                st.error(str(e))
+        col_ss, col_ref = st.columns(2)
+        with col_ss:
+            if st.button("📷 画面", use_container_width=True,
+                         disabled=st.session_state.is_streaming):
+                with st.spinner("キャプチャ中..."):
+                    img = st.session_state.client.get_screenshot()
+                    if img:
+                        st.session_state.screenshot_bytes = img
+                        st.rerun()
+                    else:
+                        st.error("失敗しました")
+        with col_ref:
+            if st.button("🔄 履歴", use_container_width=True):
+                try:
+                    jobs = st.session_state.client.list_jobs()
+                    st.session_state.job_history = jobs
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
 
 
 # ─── メインエリア ──────────────────────────────────────────
@@ -558,6 +593,25 @@ if not st.session_state.connected:
     > ngrokドメインがブロックされるネットワークでも利用可能です。
     """)
     st.stop()
+
+# ── スクリーンショット表示 ──
+if st.session_state.screenshot_bytes:
+    with st.expander("🖥️ PC画面キャプチャ", expanded=True):
+        col_img, col_btn = st.columns([6, 1])
+        with col_img:
+            st.image(st.session_state.screenshot_bytes,
+                     caption="最新のスクリーンショット",
+                     use_container_width=True)
+        with col_btn:
+            if st.button("✕ 閉じる", key="close_screenshot"):
+                st.session_state.screenshot_bytes = None
+                st.rerun()
+            if st.button("🔄 更新", key="refresh_screenshot"):
+                with st.spinner("更新中..."):
+                    img = st.session_state.client.get_screenshot()
+                    if img:
+                        st.session_state.screenshot_bytes = img
+                        st.rerun()
 
 # ── チャット履歴表示 ──
 for msg in st.session_state.messages:
@@ -667,6 +721,7 @@ if prompt := st.chat_input(
             prompt=prompt,
             cwd=cwd,
             session_id=st.session_state.session_id,
+            model=st.session_state.selected_model,
         )
         job_id = result.get("job_id")
         if not job_id:
