@@ -108,6 +108,8 @@ def init_state():
         "job_history": [],
         "selected_model": "claude-sonnet-4-5",  # デフォルトモデル
         "screenshot_bytes": None,               # 最新スクリーンショット
+        "pc_sessions": [],                      # PCのClaude履歴セッション一覧
+        "pc_sessions_loaded": False,            # 一覧取得済みフラグ
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -553,7 +555,7 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"ジョブ読み込みエラー: {e}")
 
-    # ── スクリーンショット / リフレッシュ ──
+    # ── スクリーンショット / ジョブ履歴リフレッシュ ──
     if st.session_state.connected:
         st.divider()
         col_ss, col_ref = st.columns(2)
@@ -575,6 +577,61 @@ with st.sidebar:
                     st.rerun()
                 except Exception as e:
                     st.error(str(e))
+
+    # ── PC セッション履歴（~/.claude/projects/）──
+    if st.session_state.connected:
+        st.divider()
+        col_pc_title, col_pc_btn = st.columns([3, 1])
+        with col_pc_title:
+            st.subheader("💾 PC履歴")
+        with col_pc_btn:
+            if st.button("🔄", key="load_pc_sessions",
+                         help="PCのClaude会話履歴を取得"):
+                try:
+                    with st.spinner("読み込み中..."):
+                        sessions = st.session_state.client.list_sessions()
+                    st.session_state.pc_sessions = sessions
+                    st.session_state.pc_sessions_loaded = True
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"取得失敗: {e}")
+
+        if st.session_state.pc_sessions:
+            for sess in st.session_state.pc_sessions[:20]:
+                sid = sess.get("session_id", "")
+                last_mod = sess.get("last_modified", 0)
+                last_user = sess.get("last_user_msg", "")
+                last_assist = sess.get("last_assist_msg", "")
+                project = sess.get("project_dir", "")
+                line_count = sess.get("line_count", 0)
+
+                # 表示テキスト: ユーザーの最後の発言を優先
+                preview_text = last_user or last_assist or project
+                preview = (preview_text[:38] + "…") if len(preview_text) > 38 else preview_text
+                time_str = format_timestamp(last_mod) if last_mod else ""
+
+                # 現在選択中のセッションをハイライト
+                is_current = (sid == st.session_state.session_id)
+                label = f"{'▶ ' if is_current else ''}{time_str} {preview}"
+
+                if st.button(label, key=f"pcsess_{sid}",
+                             use_container_width=True,
+                             help=f"Session: {sid[:8]}…\n{line_count}行 | {project[-30:]}"):
+                    try:
+                        with st.spinner("セッション読み込み中..."):
+                            data = st.session_state.client.get_session_events(sid)
+                        events = data.get("events", [])
+                        st.session_state.messages = process_events(events)
+                        add_session(sid)
+                        st.session_state.session_id = sid
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"読み込みエラー: {e}")
+
+        elif st.session_state.pc_sessions_loaded:
+            st.caption("セッションが見つかりません")
+        else:
+            st.caption("🔄 ボタンで一覧を取得")
 
 
 # ─── メインエリア ──────────────────────────────────────────

@@ -157,6 +157,25 @@ class BackendClient:
         mime = resp.headers.get("Content-Type", "application/octet-stream")
         return resp.content, mime
 
+    # --- PCセッション履歴 ---
+
+    def list_sessions(self) -> list:
+        """~/.claude/projects/ のセッション一覧を取得（最新30件）"""
+        resp = self.session.get(
+            f"{self.base_url}/api/sessions", timeout=15
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_session_events(self, session_id: str) -> dict:
+        """セッションの全イベント（JSONLの内容）を取得"""
+        resp = self.session.get(
+            f"{self.base_url}/api/sessions/{session_id}/events",
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     # --- スクリーンショット ---
 
     def get_screenshot(self) -> bytes | None:
