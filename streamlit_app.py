@@ -170,6 +170,99 @@ def get_path_basename(path: str) -> str:
     return path.replace("\\", "/").rstrip("/").split("/")[-1]
 
 
+# ─── ネイティブJSONLパーサー（~/.claude/projects/ 用）──────────
+# stream-jsonとは別形式: user.content=str, assistant.content=[{type,text}]
+
+def process_native_events(events: list) -> list:
+    """~/.claude/projects/ のネイティブJSONL形式 → メッセージリストに変換
+
+    ネイティブ形式の特徴:
+      - type="user":      message.content = "ユーザーの入力テキスト"（文字列）
+                          または [{"type":"tool_result", ...}]（配列）
+      - type="assistant": message.content = [{"type":"text","text":"..."},
+                                             {"type":"tool_use","name":"...","input":{}}]
+      - type="queue-operation": 無視
+    """
+    messages = []
+    pending_tool_results = {}  # tool_use_id → result str
+
+    for ev in events:
+        etype = ev.get("type", "")
+        sid = ev.get("sessionId")
+        if sid:
+            add_session(sid)
+
+        if etype == "user":
+            msg = ev.get("message", {})
+            content = msg.get("content", "")
+
+            if isinstance(content, str) and content.strip():
+                # 通常のユーザーテキスト入力
+                messages.append({
+                    "role": "user",
+                    "content": content,
+                    "tool_blocks": [],
+                    "cost_info": None,
+                })
+            elif isinstance(content, list):
+                # tool_result配列 → 直前のassistantのtool_blocksに結果を紐付け
+                for block in content:
+                    if block.get("type") == "tool_result":
+                        tool_id = block.get("tool_use_id", "")
+                        result_content = block.get("content", "")
+                        if isinstance(result_content, list):
+                            result_content = "\n".join(
+                                item.get("text", "") for item in result_content
+                                if isinstance(item, dict)
+                            )
+                        pending_tool_results[tool_id] = result_content
+
+        elif etype == "assistant":
+            msg = ev.get("message", {})
+            content = msg.get("content", [])
+            text = ""
+            tool_blocks = []
+
+            if isinstance(content, list):
+                for block in content:
+                    btype = block.get("type", "")
+                    if btype == "text":
+                        text += block.get("text", "")
+                    elif btype == "tool_use":
+                        tool_id = block.get("id", "")
+                        tool_blocks.append({
+                            "name": block.get("name", "tool"),
+                            "id": tool_id,
+                            "input_str": json.dumps(
+                                block.get("input", {}),
+                                ensure_ascii=False
+                            ),
+                            "result": pending_tool_results.pop(tool_id, ""),
+                        })
+
+            if text or tool_blocks:
+                messages.append({
+                    "role": "assistant",
+                    "content": text,
+                    "tool_blocks": tool_blocks,
+                    "cost_info": None,
+                })
+
+    # 未消化のtool_resultsは末尾のassistantブロックに付加（稀なケース）
+    if pending_tool_results and messages:
+        last = messages[-1]
+        if last["role"] == "assistant":
+            for tid, result in pending_tool_results.items():
+                last["tool_blocks"].append({
+                    "name": "tool",
+                    "id": tid,
+                    "input_str": "",
+                    "result": result,
+                })
+
+    return messages
+
+
 # ─── ストリーミング処理 ────────────────────────────────────
 
 def stream_worker(client: BackendClient, job_id: str,
@@ -621,7 +714,8 @@ with st.sidebar:
                         with st.spinner("セッション読み込み中..."):
                             data = st.session_state.client.get_session_events(sid)
                         events = data.get("events", [])
-                        st.session_state.messages = process_events(events)
+                        # ~/.claude/projects/ のネイティブ形式を専用パーサーで変換
+                        st.session_state.messages = process_native_events(events)
                         add_session(sid)
                         st.session_state.session_id = sid
                         st.rerun()
