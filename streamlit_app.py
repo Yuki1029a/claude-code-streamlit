@@ -185,6 +185,7 @@ def init_state():
         "screenshot_bytes": None,               # 最新スクリーンショット
         "pc_sessions": [],                      # PCのClaude履歴セッション一覧
         "pc_sessions_loaded": False,            # 一覧取得済みフラグ
+        "usage_data": None,                     # 使用量データキャッシュ
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -651,6 +652,67 @@ with st.sidebar:
     # ════════════════════════════════════════════
 
     if st.session_state.connected:
+
+        # ── 使用量ダッシュボード ──
+        _u_col, _u_btn = st.columns([4, 1])
+        with _u_col:
+            st.markdown("**📊 使用量**")
+        with _u_btn:
+            if st.button("🔄", key="refresh_usage", help="使用量を更新"):
+                with st.spinner("集計中…"):
+                    try:
+                        st.session_state.usage_data = st.session_state.client.get_usage()
+                    except Exception as e:
+                        st.error(str(e))
+                st.rerun()
+
+        # 初回自動取得
+        if st.session_state.usage_data is None:
+            try:
+                st.session_state.usage_data = st.session_state.client.get_usage()
+            except Exception:
+                pass
+
+        ud = st.session_state.usage_data
+        if ud and "stats" in ud:
+            s = ud["stats"]
+
+            def _fmt(period_data: dict) -> str:
+                cost = period_data.get("cost_usd", 0)
+                itok = period_data.get("input_tokens", 0)
+                otok = period_data.get("output_tokens", 0)
+                sess = period_data.get("sessions", 0)
+                return (
+                    f"${cost:.3f}  |  "
+                    f"↑{itok//1000}K ↓{otok//1000}K tok  |  "
+                    f"{sess}件"
+                )
+
+            if IS_MOBILE:
+                st.caption(f"今日: {_fmt(s.get('today', {}))}")
+                st.caption(f"今週: {_fmt(s.get('week', {}))}")
+            else:
+                c_td, c_wk = st.columns(2)
+                with c_td:
+                    td = s.get("today", {})
+                    st.metric("今日", f"${td.get('cost_usd',0):.3f}",
+                              f"{td.get('sessions',0)}セッション")
+                with c_wk:
+                    wk = s.get("week", {})
+                    st.metric("今週", f"${wk.get('cost_usd',0):.3f}",
+                              f"{wk.get('sessions',0)}セッション")
+                mo = s.get("month", {})
+                itok = mo.get("input_tokens", 0)
+                otok = mo.get("output_tokens", 0)
+                st.caption(
+                    f"今月: ${mo.get('cost_usd',0):.3f}  "
+                    f"({itok//1000}K↑ / {otok//1000}K↓ tok, {mo.get('sessions',0)}件)"
+                )
+            st.caption("※ 推定値（Sonnet 4.5料金基準）")
+        else:
+            st.caption("🔄 で使用量を取得")
+
+        st.divider()
 
         MODEL_OPTIONS = {
             "claude-sonnet-4-5": "⚡ Sonnet 4.5（速い・安い）",

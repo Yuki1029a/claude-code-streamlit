@@ -157,6 +157,16 @@ class BackendClient:
         mime = resp.headers.get("Content-Type", "application/octet-stream")
         return resp.content, mime
 
+    # --- 使用量統計 ---
+
+    def get_usage(self) -> dict:
+        """今日/今週/今月のトークン使用量とコスト推定を取得（5分キャッシュ）"""
+        resp = self.session.get(
+            f"{self.base_url}/api/usage", timeout=30
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     # --- PCセッション履歴 ---
 
     def list_sessions(self) -> list:
