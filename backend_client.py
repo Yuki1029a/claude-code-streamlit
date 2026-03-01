@@ -159,10 +159,15 @@ class BackendClient:
 
     # --- 使用量統計 ---
 
-    def get_usage(self) -> dict:
+    def get_usage(self, force_refresh: bool = False) -> dict:
         """今日/今週/今月のトークン使用量とコスト推定を取得（5分キャッシュ）"""
+        params = {}
+        if force_refresh:
+            params["refresh"] = "1"
         resp = self.session.get(
-            f"{self.base_url}/api/usage", timeout=30
+            f"{self.base_url}/api/usage",
+            params=params,
+            timeout=30,
         )
         resp.raise_for_status()
         return resp.json()

@@ -659,19 +659,21 @@ with st.sidebar:
             st.markdown("**📊 使用量**")
         with _u_btn:
             if st.button("🔄", key="refresh_usage", help="使用量を更新"):
-                with st.spinner("集計中…"):
-                    try:
-                        st.session_state.usage_data = st.session_state.client.get_usage()
-                    except Exception as e:
-                        st.error(str(e))
-                st.rerun()
+                try:
+                    with st.spinner("集計中…"):
+                        st.session_state.usage_data = st.session_state.client.get_usage(
+                            force_refresh=True
+                        )
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"取得失敗: {e}")
 
         # 初回自動取得
         if st.session_state.usage_data is None:
             try:
                 st.session_state.usage_data = st.session_state.client.get_usage()
-            except Exception:
-                pass
+            except Exception as e:
+                st.caption(f"⚠️ 使用量取得エラー: {e}")
 
         ud = st.session_state.usage_data
         if ud and "stats" in ud:
@@ -691,6 +693,7 @@ with st.sidebar:
             if IS_MOBILE:
                 st.caption(f"今日: {_fmt(s.get('today', {}))}")
                 st.caption(f"今週: {_fmt(s.get('week', {}))}")
+                st.caption(f"今月: {_fmt(s.get('month', {}))}")
             else:
                 c_td, c_wk = st.columns(2)
                 with c_td:
@@ -708,8 +711,14 @@ with st.sidebar:
                     f"今月: ${mo.get('cost_usd',0):.3f}  "
                     f"({itok//1000}K↑ / {otok//1000}K↓ tok, {mo.get('sessions',0)}件)"
                 )
-            st.caption("※ 推定値（Sonnet 4.5料金基準）")
-        else:
+            # キャッシュ時刻表示
+            cached_at = ud.get("cached_at", 0)
+            if cached_at:
+                cache_time = datetime.fromtimestamp(cached_at).strftime("%H:%M:%S")
+                st.caption(f"※ 推定値 | 取得: {cache_time}")
+            else:
+                st.caption("※ 推定値（Sonnet 4.5料金基準）")
+        elif st.session_state.usage_data is None:
             st.caption("🔄 で使用量を取得")
 
         st.divider()
