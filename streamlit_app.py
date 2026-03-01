@@ -691,38 +691,40 @@ with st.sidebar:
         ud = st.session_state.usage_data
         if ud and "stats" in ud:
             s = ud["stats"]
+            limit_usd = ud.get("usage_limit_usd", 100.0)
 
-            def _fmt(period_data: dict) -> str:
+            def _pct(period_data: dict) -> float:
+                """期間コストを制限額に対する％に変換"""
                 cost = period_data.get("cost_usd", 0)
-                itok = period_data.get("input_tokens", 0)
-                otok = period_data.get("output_tokens", 0)
-                sess = period_data.get("sessions", 0)
-                return (
-                    f"${cost:.3f}  |  "
-                    f"↑{itok//1000}K ↓{otok//1000}K tok  |  "
-                    f"{sess}件"
-                )
+                return (cost / limit_usd * 100) if limit_usd > 0 else 0.0
+
+            td = s.get("today", {})
+            wk = s.get("week", {})
+            mo = s.get("month", {})
+            td_pct = _pct(td)
+            wk_pct = _pct(wk)
+            mo_pct = _pct(mo)
 
             if IS_MOBILE:
-                st.caption(f"今日: {_fmt(s.get('today', {}))}")
-                st.caption(f"今週: {_fmt(s.get('week', {}))}")
-                st.caption(f"今月: {_fmt(s.get('month', {}))}")
+                # モバイル: コンパクトな％表示
+                st.caption(f"今日: {td_pct:.1f}% ({td.get('sessions',0)}件)")
+                st.progress(min(td_pct / 100, 1.0))
+                st.caption(f"今週: {wk_pct:.1f}% ({wk.get('sessions',0)}件)")
+                st.progress(min(wk_pct / 100, 1.0))
             else:
+                # デスクトップ: メトリック + プログレスバー
                 c_td, c_wk = st.columns(2)
                 with c_td:
-                    td = s.get("today", {})
-                    st.metric("今日", f"${td.get('cost_usd',0):.3f}",
+                    st.metric("今日", f"{td_pct:.1f}%",
                               f"{td.get('sessions',0)}セッション")
+                    st.progress(min(td_pct / 100, 1.0))
                 with c_wk:
-                    wk = s.get("week", {})
-                    st.metric("今週", f"${wk.get('cost_usd',0):.3f}",
+                    st.metric("今週", f"{wk_pct:.1f}%",
                               f"{wk.get('sessions',0)}セッション")
-                mo = s.get("month", {})
-                itok = mo.get("input_tokens", 0)
-                otok = mo.get("output_tokens", 0)
+                    st.progress(min(wk_pct / 100, 1.0))
                 st.caption(
-                    f"今月: ${mo.get('cost_usd',0):.3f}  "
-                    f"({itok//1000}K↑ / {otok//1000}K↓ tok, {mo.get('sessions',0)}件)"
+                    f"今月: {mo_pct:.1f}% "
+                    f"(${mo.get('cost_usd',0):.2f} / ${limit_usd:.0f})"
                 )
             # キャッシュ時刻表示
             cached_at = ud.get("cached_at", 0)
@@ -730,7 +732,7 @@ with st.sidebar:
                 cache_time = datetime.fromtimestamp(cached_at).strftime("%H:%M:%S")
                 st.caption(f"※ 推定値 | 取得: {cache_time}")
             else:
-                st.caption("※ 推定値（Sonnet 4.5料金基準）")
+                st.caption("※ 推定値")
         elif st.session_state.usage_data is None:
             st.caption("🔄 で使用量を取得")
 
