@@ -10,21 +10,23 @@ import queue
 import re
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# 日本時間 (UTC+9)
+JST = timezone(timedelta(hours=9))
 
 import streamlit as st
 
 from backend_client import BackendClient
 
-# ─── 使用量取得ヘルパー（BackendClientにget_usageが無い場合のフォールバック）
-def _fetch_usage(client: BackendClient, force_refresh: bool = False) -> dict:
-    """使用量データを取得。client.get_usage() が無い場合は直接HTTPリクエスト"""
-    if hasattr(client, "get_usage"):
-        return client.get_usage(force_refresh=force_refresh)
-    # フォールバック: 直接requests.Session経由でAPI呼び出し
+# ─── 使用量取得ヘルパー ──────────────────────────────────────
+def _fetch_plan_usage(client: BackendClient, force_refresh: bool = False) -> dict:
+    """プラン使用量を取得。get_plan_usage() が無い場合は直接HTTPリクエスト"""
+    if hasattr(client, "get_plan_usage"):
+        return client.get_plan_usage(force_refresh=force_refresh)
     params = {"refresh": "1"} if force_refresh else {}
     resp = client.session.get(
-        f"{client.base_url}/api/usage", params=params, timeout=30,
+        f"{client.base_url}/api/plan_usage", params=params, timeout=15,
     )
     resp.raise_for_status()
     return resp.json()
@@ -257,8 +259,8 @@ def is_image_path(path: str) -> bool:
 
 
 def format_timestamp(ts: float) -> str:
-    """UnixタイムスタンプをHH:MM形式に変換"""
-    return datetime.fromtimestamp(ts).strftime("%H:%M")
+    """UnixタイムスタンプをJST HH:MM形式に変換"""
+    return datetime.fromtimestamp(ts, tz=JST).strftime("%H:%M")
 
 
 def add_session(sid: str):
@@ -666,7 +668,7 @@ with st.sidebar:
 
     if st.session_state.connected:
 
-        # ── 使用量ダッシュボード ──
+        # ── 使用量ダッシュボード（プラン使用量） ──
         _u_col, _u_btn = st.columns([4, 1])
         with _u_col:
             st.markdown("**📊 使用量**")
@@ -674,7 +676,7 @@ with st.sidebar:
             if st.button("🔄", key="refresh_usage", help="使用量を更新"):
                 try:
                     with st.spinner("集計中…"):
-                        st.session_state.usage_data = _fetch_usage(
+                        st.session_state.usage_data = _fetch_plan_usage(
                             st.session_state.client, force_refresh=True
                         )
                     st.rerun()
@@ -684,55 +686,72 @@ with st.sidebar:
         # 初回自動取得
         if st.session_state.usage_data is None:
             try:
-                st.session_state.usage_data = _fetch_usage(st.session_state.client)
+                st.session_state.usage_data = _fetch_plan_usage(st.session_state.client)
             except Exception as e:
                 st.caption(f"⚠️ 使用量取得エラー: {e}")
 
         ud = st.session_state.usage_data
-        if ud and "stats" in ud:
-            s = ud["stats"]
-            limit_usd = ud.get("usage_limit_usd", 100.0)
+        if ud and "today" in ud:
+            td = ud.get("today", {})
+            wk = ud.get("week", {})
+            td_tok = td.get("tokens_total", 0)
+            wk_tok = wk.get("tokens_total", 0)
+            td_msg = td.get("messages", 0)
+            wk_msg = wk.get("messages", 0)
+            td_sess = td.get("sessions", 0)
+            wk_sess = wk.get("sessions", 0)
+            wk_reset = wk.get("reset", "")
 
-            def _pct(period_data: dict) -> float:
-                """期間コストを制限額に対する％に変換"""
-                cost = period_data.get("cost_usd", 0)
-                return (cost / limit_usd * 100) if limit_usd > 0 else 0.0
+            def _tok_fmt(tok: int) -> str:
+                if tok >= 1_000_000:
+                    return f"{tok / 1_000_000:.1f}M"
+                elif tok >= 1000:
+                    return f"{tok // 1000}K"
+                return str(tok)
 
-            td = s.get("today", {})
-            wk = s.get("week", {})
-            mo = s.get("month", {})
-            td_pct = _pct(td)
-            wk_pct = _pct(wk)
-            mo_pct = _pct(mo)
+            # モデル別内訳
+            def _model_breakdown(tokens_by_model: dict) -> str:
+                parts = []
+                for model, tok in sorted(
+                    tokens_by_model.items(),
+                    key=lambda x: x[1], reverse=True,
+                ):
+                    # モデル名を短縮
+                    short = model.replace("claude-", "").split("-2025")[0]
+                    parts.append(f"{short}: {_tok_fmt(tok)}")
+                return " | ".join(parts[:3])
 
             if IS_MOBILE:
-                # モバイル: コンパクトな％表示
-                st.caption(f"今日: {td_pct:.1f}% ({td.get('sessions',0)}件)")
-                st.progress(min(td_pct / 100, 1.0))
-                st.caption(f"今週: {wk_pct:.1f}% ({wk.get('sessions',0)}件)")
-                st.progress(min(wk_pct / 100, 1.0))
+                st.caption(f"📅 今日: {_tok_fmt(td_tok)} tok / {td_msg}msg / {td_sess}セッション")
+                td_models = td.get("tokens_by_model", {})
+                if td_models:
+                    st.caption(f"　{_model_breakdown(td_models)}")
+                st.caption(f"📅 今週: {_tok_fmt(wk_tok)} tok / {wk_msg}msg / {wk_sess}セッション")
+                if wk_reset:
+                    st.caption(f"　リセット: {wk_reset}")
             else:
-                # デスクトップ: メトリック + プログレスバー
                 c_td, c_wk = st.columns(2)
                 with c_td:
-                    st.metric("今日", f"{td_pct:.1f}%",
-                              f"{td.get('sessions',0)}セッション")
-                    st.progress(min(td_pct / 100, 1.0))
+                    st.metric("📅 今日",
+                              f"{_tok_fmt(td_tok)} tok",
+                              f"{td_msg}msg / {td_sess}セッション")
+                    td_models = td.get("tokens_by_model", {})
+                    if td_models:
+                        st.caption(_model_breakdown(td_models))
                 with c_wk:
-                    st.metric("今週", f"{wk_pct:.1f}%",
-                              f"{wk.get('sessions',0)}セッション")
-                    st.progress(min(wk_pct / 100, 1.0))
-                st.caption(
-                    f"今月: {mo_pct:.1f}% "
-                    f"(${mo.get('cost_usd',0):.2f} / ${limit_usd:.0f})"
-                )
-            # キャッシュ時刻表示
-            cached_at = ud.get("cached_at", 0)
-            if cached_at:
-                cache_time = datetime.fromtimestamp(cached_at).strftime("%H:%M:%S")
-                st.caption(f"※ 推定値 | 取得: {cache_time}")
-            else:
-                st.caption("※ 推定値")
+                    st.metric("📅 今週",
+                              f"{_tok_fmt(wk_tok)} tok",
+                              f"{wk_msg}msg / {wk_sess}セッション")
+                    if wk_reset:
+                        st.caption(f"リセット: {wk_reset}")
+                    wk_models = wk.get("tokens_by_model", {})
+                    if wk_models:
+                        st.caption(_model_breakdown(wk_models))
+
+            # 取得時刻（JST）
+            cached_jst = ud.get("cached_at_jst", "")
+            if cached_jst:
+                st.caption(f"※ 推定値 | 取得: {cached_jst.split(' ')[1]}")
         elif st.session_state.usage_data is None:
             st.caption("🔄 で使用量を取得")
 

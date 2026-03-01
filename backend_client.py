@@ -159,6 +159,19 @@ class BackendClient:
         mime = resp.headers.get("Content-Type", "application/octet-stream")
         return resp.content, mime
 
+    # --- プラン使用量（stats-cache.json ベース）---
+
+    def get_plan_usage(self, force_refresh: bool = False) -> dict:
+        """Claude.ai プラン使用量（今日/今週トークン）を取得"""
+        params = {"refresh": "1"} if force_refresh else {}
+        resp = self.session.get(
+            f"{self.base_url}/api/plan_usage",
+            params=params,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     # --- 使用量統計 ---
 
     def get_usage(self, force_refresh: bool = False) -> dict:
