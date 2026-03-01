@@ -694,13 +694,16 @@ with st.sidebar:
         if ud and "today" in ud:
             td = ud.get("today", {})
             wk = ud.get("week", {})
+            limits = ud.get("limits", {})
             td_tok = td.get("tokens_total", 0)
             wk_tok = wk.get("tokens_total", 0)
+            td_pct = td.get("percent", 0)
+            wk_pct = wk.get("percent", 0)
             td_msg = td.get("messages", 0)
             wk_msg = wk.get("messages", 0)
-            td_sess = td.get("sessions", 0)
-            wk_sess = wk.get("sessions", 0)
             wk_reset = wk.get("reset", "")
+            daily_limit = limits.get("daily_tokens", 0)
+            weekly_limit = limits.get("weekly_tokens", 0)
 
             def _tok_fmt(tok: int) -> str:
                 if tok >= 1_000_000:
@@ -709,6 +712,23 @@ with st.sidebar:
                     return f"{tok // 1000}K"
                 return str(tok)
 
+            def _progress_bar(pct: float, label: str):
+                """パーセンテージに応じた色付きプログレスバーを描画"""
+                color = "#6bcb77" if pct < 50 else "#ffd93d" if pct < 80 else "#ff6b6b"
+                width = min(pct, 100)
+                st.markdown(f"""
+                <div style="margin: 2px 0 6px 0;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                        <span style="font-size: 12px; color: #bbb;">{label}</span>
+                        <span style="font-size: 12px; color: {color}; font-weight: bold;">{pct:.1f}%</span>
+                    </div>
+                    <div style="background: #2a2a3e; border-radius: 4px; height: 8px; overflow: hidden;">
+                        <div style="background: {color}; width: {width}%; height: 100%; border-radius: 4px;
+                                    transition: width 0.5s;"></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
             # モデル別内訳
             def _model_breakdown(tokens_by_model: dict) -> str:
                 parts = []
@@ -716,37 +736,36 @@ with st.sidebar:
                     tokens_by_model.items(),
                     key=lambda x: x[1], reverse=True,
                 ):
-                    # モデル名を短縮
                     short = model.replace("claude-", "").split("-2025")[0]
                     parts.append(f"{short}: {_tok_fmt(tok)}")
                 return " | ".join(parts[:3])
 
             if IS_MOBILE:
-                st.caption(f"📅 今日: {_tok_fmt(td_tok)} tok / {td_msg}msg / {td_sess}セッション")
+                # ── 今日 ──
+                _progress_bar(td_pct, f"📅 今日  {_tok_fmt(td_tok)} / {_tok_fmt(daily_limit)}")
                 td_models = td.get("tokens_by_model", {})
                 if td_models:
                     st.caption(f"　{_model_breakdown(td_models)}")
-                st.caption(f"📅 今週: {_tok_fmt(wk_tok)} tok / {wk_msg}msg / {wk_sess}セッション")
+                # ── 今週 ──
+                _progress_bar(wk_pct, f"📅 今週  {_tok_fmt(wk_tok)} / {_tok_fmt(weekly_limit)}")
+                wk_models = wk.get("tokens_by_model", {})
+                if wk_models:
+                    st.caption(f"　{_model_breakdown(wk_models)}")
                 if wk_reset:
                     st.caption(f"　リセット: {wk_reset}")
             else:
-                c_td, c_wk = st.columns(2)
-                with c_td:
-                    st.metric("📅 今日",
-                              f"{_tok_fmt(td_tok)} tok",
-                              f"{td_msg}msg / {td_sess}セッション")
-                    td_models = td.get("tokens_by_model", {})
-                    if td_models:
-                        st.caption(_model_breakdown(td_models))
-                with c_wk:
-                    st.metric("📅 今週",
-                              f"{_tok_fmt(wk_tok)} tok",
-                              f"{wk_msg}msg / {wk_sess}セッション")
-                    if wk_reset:
-                        st.caption(f"リセット: {wk_reset}")
-                    wk_models = wk.get("tokens_by_model", {})
-                    if wk_models:
-                        st.caption(_model_breakdown(wk_models))
+                # ── 今日 ──
+                _progress_bar(td_pct, f"📅 今日  {_tok_fmt(td_tok)} / {_tok_fmt(daily_limit)}  ({td_msg}msg)")
+                td_models = td.get("tokens_by_model", {})
+                if td_models:
+                    st.caption(_model_breakdown(td_models))
+                # ── 今週 ──
+                _progress_bar(wk_pct, f"📅 今週  {_tok_fmt(wk_tok)} / {_tok_fmt(weekly_limit)}  ({wk_msg}msg)")
+                wk_models = wk.get("tokens_by_model", {})
+                if wk_models:
+                    st.caption(_model_breakdown(wk_models))
+                if wk_reset:
+                    st.caption(f"リセット: {wk_reset}")
 
             # 取得時刻（JST）
             cached_jst = ud.get("cached_at_jst", "")
