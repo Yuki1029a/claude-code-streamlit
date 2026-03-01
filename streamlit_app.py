@@ -16,6 +16,19 @@ import streamlit as st
 
 from backend_client import BackendClient
 
+# ─── 使用量取得ヘルパー（BackendClientにget_usageが無い場合のフォールバック）
+def _fetch_usage(client: BackendClient, force_refresh: bool = False) -> dict:
+    """使用量データを取得。client.get_usage() が無い場合は直接HTTPリクエスト"""
+    if hasattr(client, "get_usage"):
+        return client.get_usage(force_refresh=force_refresh)
+    # フォールバック: 直接requests.Session経由でAPI呼び出し
+    params = {"refresh": "1"} if force_refresh else {}
+    resp = client.session.get(
+        f"{client.base_url}/api/usage", params=params, timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
 # ─── ページ設定 ───────────────────────────────────────────
 st.set_page_config(
     page_title="Claude Code Remote",
@@ -661,8 +674,8 @@ with st.sidebar:
             if st.button("🔄", key="refresh_usage", help="使用量を更新"):
                 try:
                     with st.spinner("集計中…"):
-                        st.session_state.usage_data = st.session_state.client.get_usage(
-                            force_refresh=True
+                        st.session_state.usage_data = _fetch_usage(
+                            st.session_state.client, force_refresh=True
                         )
                     st.rerun()
                 except Exception as e:
@@ -671,7 +684,7 @@ with st.sidebar:
         # 初回自動取得
         if st.session_state.usage_data is None:
             try:
-                st.session_state.usage_data = st.session_state.client.get_usage()
+                st.session_state.usage_data = _fetch_usage(st.session_state.client)
             except Exception as e:
                 st.caption(f"⚠️ 使用量取得エラー: {e}")
 

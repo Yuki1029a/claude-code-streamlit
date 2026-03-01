@@ -4,6 +4,8 @@ Streamlit Cloud → ngrok → Flask への全APIリクエストをラップす�
 requests.Session でCookie認証を自動管理。
 """
 
+__version__ = "2026.03.01a"
+
 import json
 import re
 import requests
