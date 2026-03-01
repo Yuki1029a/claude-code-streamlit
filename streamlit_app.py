@@ -27,28 +27,24 @@ st.set_page_config(
 # ─── カスタムCSS ──────────────────────────────────────────
 st.markdown("""
 <style>
-/* 全体 */
+
+/* ══════════════════════════════════════════════
+   共通スタイル
+══════════════════════════════════════════════ */
 .stApp { font-family: 'Segoe UI', sans-serif; }
 
-/* チャットメッセージ内コードブロック */
+/* コードブロック */
 .stChatMessage pre {
     background: #0d1117;
     border: 1px solid #30363d;
     border-radius: 6px;
     padding: 12px;
     overflow-x: auto;
+    overflow-y: auto;
     position: relative;
 }
 .stChatMessage code {
-    font-size: 13px;
     font-family: 'Cascadia Code', 'Fira Code', monospace;
-}
-
-/* ツール使用の折りたたみ */
-.tool-expander {
-    border-left: 3px solid #e94560;
-    padding-left: 8px;
-    margin: 4px 0;
 }
 
 /* コスト表示 */
@@ -57,19 +53,6 @@ st.markdown("""
     color: #888;
     text-align: center;
     margin: 4px 0;
-}
-
-/* ファイルカード */
-.file-card {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: #16213e;
-    border: 1px solid #30363d;
-    border-radius: 8px;
-    padding: 6px 12px;
-    margin: 4px;
-    font-size: 13px;
 }
 
 /* エラーメッセージ */
@@ -82,10 +65,102 @@ st.markdown("""
 }
 
 /* ステータスバッジ */
-.status-running { color: #ffd93d; }
-.status-completed { color: #6bcb77; }
-.status-error { color: #ff6b6b; }
-.status-cancelled { color: #888; }
+.status-running  { color: #ffd93d; }
+.status-completed{ color: #6bcb77; }
+.status-error    { color: #ff6b6b; }
+.status-cancelled{ color: #888;    }
+
+/* ══════════════════════════════════════════════
+   📱 MOBILE  (≤768px)
+══════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+    /* コンテナ余白 – チャット入力欄に隠れないよう下余白を大きく */
+    .block-container {
+        padding: 0.5rem 0.4rem 7rem !important;
+        max-width: 100% !important;
+    }
+
+    /* ボタン – 親指でタップしやすい最低高さ 48px */
+    .stButton > button {
+        min-height: 48px !important;
+        font-size: 15px !important;
+        border-radius: 12px !important;
+        padding: 6px 14px !important;
+        line-height: 1.3 !important;
+    }
+
+    /* iOS でフォーム入力時にズームさせない（16px以上が必須） */
+    input[type="text"],
+    input[type="password"],
+    textarea { font-size: 16px !important; }
+
+    /* セレクトボックス */
+    div[data-baseweb="select"] * { font-size: 14px !important; }
+
+    /* チャット入力 */
+    .stChatInputContainer textarea {
+        font-size: 16px !important;
+        min-height: 48px !important;
+    }
+
+    /* チャットバブル */
+    .stChatMessage {
+        padding: 6px 8px !important;
+        margin-bottom: 6px !important;
+    }
+
+    /* コードブロック – モバイルは縦スクロール可・小さめフォント */
+    .stChatMessage pre {
+        font-size: 12px !important;
+        max-height: 180px !important;
+    }
+    .stChatMessage code { font-size: 12px !important; }
+
+    /* エキスパンダー – タップしやすく */
+    .streamlit-expanderHeader {
+        min-height: 44px !important;
+        font-size: 14px !important;
+        padding: 8px 12px !important;
+    }
+
+    /* ツール結果テキストエリア */
+    .stTextArea textarea { font-size: 13px !important; }
+
+    /* 画像 – 縦に長くなりすぎない */
+    .stImage img {
+        max-height: 55vh !important;
+        object-fit: contain !important;
+    }
+
+    /* サイドバー内余白 */
+    section[data-testid="stSidebar"] > div:first-child {
+        padding: 1rem 0.75rem !important;
+    }
+
+    /* キャプション */
+    .stCaption { font-size: 12px !important; }
+
+    /* divider */
+    hr { margin: 0.5rem 0 !important; }
+}
+
+/* ══════════════════════════════════════════════
+   💻 DESKTOP  (>768px)
+══════════════════════════════════════════════ */
+@media (min-width: 769px) {
+
+    .stChatMessage pre  { max-height: 450px; }
+    .stChatMessage code { font-size: 13px; }
+
+    /* ツールカード左ボーダー */
+    .tool-expander {
+        border-left: 3px solid #e94560;
+        padding-left: 8px;
+        margin: 4px 0;
+    }
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -116,6 +191,28 @@ def init_state():
             st.session_state[k] = v
 
 init_state()
+
+
+# ─── モバイル自動検出 ──────────────────────────────────────
+# 初回アクセス時のみJSで画面幅を検出し ?dv=m|d をURLに付与してリロード
+# 2回目以降はURLパラメータから読み取るだけでリロードなし
+st.markdown("""
+<script>
+(function(){
+  try {
+    if(location.search.indexOf('dv=')<0){
+      var sep = location.search ? '&' : '?';
+      location.replace(
+        location.pathname + location.search + sep +
+        'dv=' + (window.innerWidth <= 768 ? 'm' : 'd')
+      );
+    }
+  } catch(e){}
+})();
+</script>
+""", unsafe_allow_html=True)
+
+IS_MOBILE = st.query_params.get("dv", "d") == "m"
 
 
 # ─── ヘルパー関数 ──────────────────────────────────────────
@@ -437,19 +534,27 @@ def process_events(events: list) -> list:
 # ─── サイドバー ────────────────────────────────────────────
 
 with st.sidebar:
-    st.title("🤖 Claude Code")
-    st.caption("Remote Control via Streamlit")
 
-    st.divider()
+    # ── ヘッダー ──
+    if IS_MOBILE:
+        # モバイル: コンパクトヘッダー
+        st.markdown("### 🤖 Claude Code")
+    else:
+        st.title("🤖 Claude Code")
+        st.caption("Remote Control via Streamlit")
+        st.divider()
 
     # ── 接続設定 ──
-    st.subheader("接続設定")
+    st.subheader("🔌 接続設定" if IS_MOBILE else "接続設定")
 
     ngrok_url = st.text_input(
         "ngrok URL",
         placeholder="https://xxxx.ngrok-free.app",
         help="Flask バックエンドの ngrok URL",
+        label_visibility="collapsed" if IS_MOBILE else "visible",
     )
+    if IS_MOBILE:
+        st.caption("ngrok URL")
 
     # AUTH_TOKEN: secretsから取得、なければ手動入力
     default_token = ""
@@ -463,17 +568,19 @@ with st.sidebar:
         value=default_token,
         type="password",
         help="Flask バックエンドの認証トークン",
+        label_visibility="collapsed" if IS_MOBILE else "visible",
     )
+    if IS_MOBILE:
+        st.caption("Auth Token")
 
     col1, col2 = st.columns(2)
     with col1:
-        connect_btn = st.button(
-            "🔌 接続" if not st.session_state.connected else "🔄 再接続",
-            use_container_width=True,
-        )
+        connect_label = ("🔌" if IS_MOBILE else "🔌 接続") if not st.session_state.connected else ("🔄" if IS_MOBILE else "🔄 再接続")
+        connect_btn = st.button(connect_label, use_container_width=True)
     with col2:
+        disconnect_label = "❌" if IS_MOBILE else "❌ 切断"
         disconnect_btn = st.button(
-            "❌ 切断",
+            disconnect_label,
             disabled=not st.session_state.connected,
             use_container_width=True,
         )
@@ -485,9 +592,8 @@ with st.sidebar:
         elif not auth_token:
             st.error("Auth Tokenを入力してください")
         else:
-            # URLバリデーション
             if not re.match(r"https?://.*\.(ngrok-free\.app|ngrok\.io|ngrok\.app)", ngrok_url):
-                st.warning("⚠️ ngrokドメイン以外のURLです。続行しますか？")
+                st.warning("⚠️ ngrokドメイン以外のURLです")
 
             with st.spinner("接続中..."):
                 client = BackendClient(ngrok_url)
@@ -495,7 +601,6 @@ with st.sidebar:
                 if ok:
                     st.session_state.client = client
                     st.session_state.connected = True
-                    # ディレクトリ取得
                     try:
                         dirs = client.get_directories()
                         st.session_state.directories = dirs
@@ -507,11 +612,9 @@ with st.sidebar:
                             st.session_state.selected_dir = flat[0]
                     except Exception:
                         pass
-                    # ジョブ履歴取得
                     try:
                         jobs = client.list_jobs()
                         st.session_state.job_history = jobs
-                        # 既存セッションIDを抽出
                         for job in jobs:
                             sid = job.get("session_id_out")
                             if sid:
@@ -535,7 +638,7 @@ with st.sidebar:
         st.session_state.job_history = []
         st.rerun()
 
-    # 接続状態表示
+    # 接続状態バッジ
     if st.session_state.connected:
         st.success("✅ 接続中")
     else:
@@ -543,9 +646,12 @@ with st.sidebar:
 
     st.divider()
 
-    # ── モデル選択 ──
+    # ════════════════════════════════════════════
+    # 接続後のUI（モバイル / デスクトップで分岐）
+    # ════════════════════════════════════════════
+
     if st.session_state.connected:
-        st.subheader("モデル")
+
         MODEL_OPTIONS = {
             "claude-sonnet-4-5": "⚡ Sonnet 4.5（速い・安い）",
             "claude-opus-4-5":   "🧠 Opus 4.5（賢い・高い）",
@@ -553,216 +659,368 @@ with st.sidebar:
             "claude-opus-4":     "🧠 Opus 4",
             "claude-sonnet-4":   "⚡ Sonnet 4",
         }
-        selected_model = st.selectbox(
-            "Model",
-            options=list(MODEL_OPTIONS.keys()),
-            format_func=lambda x: MODEL_OPTIONS.get(x, x),
-            index=list(MODEL_OPTIONS.keys()).index(
-                st.session_state.selected_model
-            ) if st.session_state.selected_model in MODEL_OPTIONS else 0,
-            label_visibility="collapsed",
-        )
-        st.session_state.selected_model = selected_model
 
-    # ── 作業ディレクトリ ──
-    if st.session_state.connected and st.session_state.flat_dirs:
-        st.subheader("作業ディレクトリ")
+        if IS_MOBILE:
+            # ─────────────────────────────────────
+            # 📱 モバイルサイドバー
+            # 情報密度を下げ、タップしやすさを優先
+            # ─────────────────────────────────────
 
-        # グループ化表示
-        dir_options = st.session_state.flat_dirs
-        dir_labels = {}
-        for group_name, group_dirs in st.session_state.directories.items():
-            group_base = get_path_basename(group_name)
-            for d in group_dirs:
-                dir_labels[d] = f"📁 {group_base}/{get_path_basename(d)}"
+            # モデル + ディレクトリ を横並びキャプション付きで表示
+            st.markdown("**⚡ モデル**")
+            selected_model = st.selectbox(
+                "Model",
+                options=list(MODEL_OPTIONS.keys()),
+                format_func=lambda x: MODEL_OPTIONS.get(x, x),
+                index=list(MODEL_OPTIONS.keys()).index(
+                    st.session_state.selected_model
+                ) if st.session_state.selected_model in MODEL_OPTIONS else 0,
+                label_visibility="collapsed",
+            )
+            st.session_state.selected_model = selected_model
 
-        selected = st.selectbox(
-            "CWD",
-            options=dir_options,
-            format_func=lambda x: dir_labels.get(x, get_path_basename(x)),
-            index=dir_options.index(st.session_state.selected_dir)
-            if st.session_state.selected_dir in dir_options
-            else 0,
-            label_visibility="collapsed",
-        )
-        st.session_state.selected_dir = selected
+            if st.session_state.flat_dirs:
+                st.markdown("**📁 作業フォルダ**")
+                dir_options = st.session_state.flat_dirs
+                dir_labels = {}
+                for group_name, group_dirs in st.session_state.directories.items():
+                    group_base = get_path_basename(group_name)
+                    for d in group_dirs:
+                        dir_labels[d] = f"{group_base}/{get_path_basename(d)}"
+                selected = st.selectbox(
+                    "CWD",
+                    options=dir_options,
+                    format_func=lambda x: dir_labels.get(x, get_path_basename(x)),
+                    index=dir_options.index(st.session_state.selected_dir)
+                    if st.session_state.selected_dir in dir_options else 0,
+                    label_visibility="collapsed",
+                )
+                st.session_state.selected_dir = selected
 
-    # ── セッション ──
-    if st.session_state.connected and st.session_state.sessions:
-        st.subheader("セッション")
-        session_options = ["(新規セッション)"] + st.session_state.sessions
-        session_labels = {
-            s: f"Session {s[:8]}" for s in st.session_state.sessions
-        }
-        session_labels["(新規セッション)"] = "🆕 新規セッション"
+            # セッション（新規/継続）
+            session_options = ["🆕 新規"] + st.session_state.sessions
+            session_labels = {s: f"↩ {s[:8]}" for s in st.session_state.sessions}
+            session_labels["🆕 新規"] = "🆕 新規"
+            current = st.session_state.session_id or "🆕 新規"
+            if current not in session_options:
+                current = "🆕 新規"
+            sel_session = st.selectbox(
+                "💬 セッション",
+                options=session_options,
+                format_func=lambda x: session_labels.get(x, x),
+                index=session_options.index(current),
+            )
+            st.session_state.session_id = None if sel_session == "🆕 新規" else sel_session
 
-        current = st.session_state.session_id or "(新規セッション)"
-        if current not in session_options:
-            current = "(新規セッション)"
+            st.divider()
 
-        sel_session = st.selectbox(
-            "Session",
-            options=session_options,
-            format_func=lambda x: session_labels.get(x, x),
-            index=session_options.index(current),
-            label_visibility="collapsed",
-        )
-        if sel_session == "(新規セッション)":
-            st.session_state.session_id = None
-        else:
-            st.session_state.session_id = sel_session
-
-    # ── ジョブ履歴 ──
-    if st.session_state.connected and st.session_state.job_history:
-        st.subheader("ジョブ履歴")
-        for job in st.session_state.job_history[:10]:
-            status = job.get("status", "?")
-            prompt_preview = job.get("prompt", "")[:40]
-            job_id = job.get("job_id", "")
-            created = job.get("created_at")
-            time_str = format_timestamp(created) if created else ""
-
-            status_icon = {
-                "running": "🟡",
-                "completed": "🟢",
-                "error": "🔴",
-                "cancelled": "⚪",
-            }.get(status, "❓")
-
-            if st.button(
-                f"{status_icon} {time_str} {prompt_preview}",
-                key=f"job_{job_id}",
-                use_container_width=True,
-            ):
-                # ジョブの全イベントをロードして表示
-                try:
-                    job_data = st.session_state.client.get_job(job_id)
-                    events = job_data.get("events", [])
-                    st.session_state.messages = process_events(events)
-                    sid = job_data.get("session_id_out")
-                    if sid:
-                        add_session(sid)
-                        st.session_state.session_id = sid
-                    st.session_state.current_job_id = job_id
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"ジョブ読み込みエラー: {e}")
-
-    # ── スクリーンショット / ジョブ履歴リフレッシュ ──
-    if st.session_state.connected:
-        st.divider()
-        col_ss, col_ref = st.columns(2)
-        with col_ss:
-            if st.button("📷 画面", use_container_width=True,
-                         disabled=st.session_state.is_streaming):
-                with st.spinner("キャプチャ中..."):
-                    img = st.session_state.client.get_screenshot()
-                    if img:
-                        st.session_state.screenshot_bytes = img
-                        st.rerun()
-                    else:
-                        st.error("失敗しました")
-        with col_ref:
-            if st.button("🔄 履歴", use_container_width=True):
-                try:
-                    jobs = st.session_state.client.list_jobs()
-                    st.session_state.job_history = jobs
-                    st.rerun()
-                except Exception as e:
-                    st.error(str(e))
-
-    # ── PC セッション履歴（~/.claude/projects/）──
-    if st.session_state.connected:
-        st.divider()
-        col_pc_title, col_pc_btn = st.columns([3, 1])
-        with col_pc_title:
-            st.subheader("💾 PC履歴")
-        with col_pc_btn:
-            if st.button("🔄", key="load_pc_sessions",
-                         help="PCのClaude会話履歴を取得"):
-                try:
-                    with st.spinner("読み込み中..."):
-                        sessions = st.session_state.client.list_sessions()
-                    st.session_state.pc_sessions = sessions
-                    st.session_state.pc_sessions_loaded = True
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"取得失敗: {e}")
-
-        if st.session_state.pc_sessions:
-            for sess in st.session_state.pc_sessions[:20]:
-                sid = sess.get("session_id", "")
-                last_mod = sess.get("last_modified", 0)
-                last_user = sess.get("last_user_msg", "")
-                last_assist = sess.get("last_assist_msg", "")
-                project = sess.get("project_dir", "")
-                line_count = sess.get("line_count", 0)
-
-                # 表示テキスト: ユーザーの最後の発言を優先
-                preview_text = last_user or last_assist or project
-                preview = (preview_text[:38] + "…") if len(preview_text) > 38 else preview_text
-                time_str = format_timestamp(last_mod) if last_mod else ""
-
-                # 現在選択中のセッションをハイライト
-                is_current = (sid == st.session_state.session_id)
-                label = f"{'▶ ' if is_current else ''}{time_str} {preview}"
-
-                if st.button(label, key=f"pcsess_{sid}",
-                             use_container_width=True,
-                             help=f"Session: {sid[:8]}…\n{line_count}行 | {project[-30:]}"):
+            # 大きなアクションボタン（4列）
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                if st.button("📷", use_container_width=True,
+                             help="PCの画面キャプチャ",
+                             disabled=st.session_state.is_streaming):
+                    with st.spinner("…"):
+                        img = st.session_state.client.get_screenshot()
+                        if img:
+                            st.session_state.screenshot_bytes = img
+                            st.rerun()
+            with c2:
+                if st.button("🔄", use_container_width=True, help="ジョブ履歴更新"):
                     try:
-                        with st.spinner("セッション読み込み中..."):
-                            data = st.session_state.client.get_session_events(sid)
-                        events = data.get("events", [])
-                        # ~/.claude/projects/ のネイティブ形式を専用パーサーで変換
-                        st.session_state.messages = process_native_events(events)
-                        add_session(sid)
-                        st.session_state.session_id = sid
+                        jobs = st.session_state.client.list_jobs()
+                        st.session_state.job_history = jobs
                         st.rerun()
                     except Exception as e:
-                        st.error(f"読み込みエラー: {e}")
+                        st.error(str(e))
+            with c3:
+                if st.button("💾", use_container_width=True, help="PC履歴取得",
+                             key="mob_pc_sessions"):
+                    try:
+                        with st.spinner("…"):
+                            sessions = st.session_state.client.list_sessions()
+                        st.session_state.pc_sessions = sessions
+                        st.session_state.pc_sessions_loaded = True
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"エラー: {e}")
+            with c4:
+                if st.button("🗑", use_container_width=True, help="チャット画面クリア"):
+                    st.session_state.messages = []
+                    st.session_state.screenshot_bytes = None
+                    st.rerun()
 
-        elif st.session_state.pc_sessions_loaded:
-            st.caption("セッションが見つかりません")
+            # ── モバイル: ジョブ履歴（直近5件）──
+            if st.session_state.job_history:
+                st.markdown("**📋 最近のジョブ**")
+                for job in st.session_state.job_history[:5]:
+                    status = job.get("status", "?")
+                    prompt_preview = job.get("prompt", "")[:28]
+                    job_id = job.get("job_id", "")
+                    created = job.get("created_at")
+                    time_str = format_timestamp(created) if created else ""
+                    icon = {"running":"🟡","completed":"🟢","error":"🔴","cancelled":"⚪"}.get(status,"❓")
+                    if st.button(f"{icon} {time_str} {prompt_preview}",
+                                 key=f"job_{job_id}", use_container_width=True):
+                        try:
+                            job_data = st.session_state.client.get_job(job_id)
+                            events = job_data.get("events", [])
+                            st.session_state.messages = process_events(events)
+                            sid = job_data.get("session_id_out")
+                            if sid:
+                                add_session(sid)
+                                st.session_state.session_id = sid
+                            st.session_state.current_job_id = job_id
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"エラー: {e}")
+
+            # ── モバイル: PC履歴（直近8件）──
+            if st.session_state.pc_sessions:
+                st.markdown("**💾 PC履歴**")
+                for sess in st.session_state.pc_sessions[:8]:
+                    sid = sess.get("session_id", "")
+                    last_mod = sess.get("last_modified", 0)
+                    last_user = sess.get("last_user_msg", "")
+                    last_assist = sess.get("last_assist_msg", "")
+                    project = sess.get("project_dir", "")
+                    line_count = sess.get("line_count", 0)
+                    preview_text = last_user or last_assist or project
+                    preview = (preview_text[:28] + "…") if len(preview_text) > 28 else preview_text
+                    time_str = format_timestamp(last_mod) if last_mod else ""
+                    is_current = (sid == st.session_state.session_id)
+                    label = f"{'▶' if is_current else '📜'} {time_str} {preview}"
+                    if st.button(label, key=f"pcsess_{sid}", use_container_width=True,
+                                 help=f"{sid[:8]} | {line_count}行"):
+                        try:
+                            with st.spinner("読込中…"):
+                                data = st.session_state.client.get_session_events(sid)
+                            events = data.get("events", [])
+                            st.session_state.messages = process_native_events(events)
+                            add_session(sid)
+                            st.session_state.session_id = sid
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"エラー: {e}")
+            elif st.session_state.pc_sessions_loaded:
+                st.caption("セッションなし")
+            else:
+                st.caption("💾 で履歴取得")
+
         else:
-            st.caption("🔄 ボタンで一覧を取得")
+            # ─────────────────────────────────────
+            # 💻 デスクトップサイドバー
+            # 情報を豊富に、ラベル付きで表示
+            # ─────────────────────────────────────
+
+            # ── モデル選択 ──
+            st.subheader("モデル")
+            selected_model = st.selectbox(
+                "Model",
+                options=list(MODEL_OPTIONS.keys()),
+                format_func=lambda x: MODEL_OPTIONS.get(x, x),
+                index=list(MODEL_OPTIONS.keys()).index(
+                    st.session_state.selected_model
+                ) if st.session_state.selected_model in MODEL_OPTIONS else 0,
+                label_visibility="collapsed",
+            )
+            st.session_state.selected_model = selected_model
+
+            # ── 作業ディレクトリ ──
+            if st.session_state.flat_dirs:
+                st.subheader("作業ディレクトリ")
+                dir_options = st.session_state.flat_dirs
+                dir_labels = {}
+                for group_name, group_dirs in st.session_state.directories.items():
+                    group_base = get_path_basename(group_name)
+                    for d in group_dirs:
+                        dir_labels[d] = f"📁 {group_base}/{get_path_basename(d)}"
+                selected = st.selectbox(
+                    "CWD",
+                    options=dir_options,
+                    format_func=lambda x: dir_labels.get(x, get_path_basename(x)),
+                    index=dir_options.index(st.session_state.selected_dir)
+                    if st.session_state.selected_dir in dir_options else 0,
+                    label_visibility="collapsed",
+                )
+                st.session_state.selected_dir = selected
+
+            # ── セッション ──
+            if st.session_state.sessions:
+                st.subheader("セッション")
+                session_options = ["(新規セッション)"] + st.session_state.sessions
+                session_labels = {s: f"Session {s[:8]}" for s in st.session_state.sessions}
+                session_labels["(新規セッション)"] = "🆕 新規セッション"
+                current = st.session_state.session_id or "(新規セッション)"
+                if current not in session_options:
+                    current = "(新規セッション)"
+                sel_session = st.selectbox(
+                    "Session",
+                    options=session_options,
+                    format_func=lambda x: session_labels.get(x, x),
+                    index=session_options.index(current),
+                    label_visibility="collapsed",
+                )
+                st.session_state.session_id = None if sel_session == "(新規セッション)" else sel_session
+
+            # ── ジョブ履歴（10件）──
+            if st.session_state.job_history:
+                st.subheader("ジョブ履歴")
+                for job in st.session_state.job_history[:10]:
+                    status = job.get("status", "?")
+                    prompt_preview = job.get("prompt", "")[:40]
+                    job_id = job.get("job_id", "")
+                    created = job.get("created_at")
+                    time_str = format_timestamp(created) if created else ""
+                    icon = {"running":"🟡","completed":"🟢","error":"🔴","cancelled":"⚪"}.get(status,"❓")
+                    if st.button(f"{icon} {time_str} {prompt_preview}",
+                                 key=f"job_{job_id}", use_container_width=True):
+                        try:
+                            job_data = st.session_state.client.get_job(job_id)
+                            events = job_data.get("events", [])
+                            st.session_state.messages = process_events(events)
+                            sid = job_data.get("session_id_out")
+                            if sid:
+                                add_session(sid)
+                                st.session_state.session_id = sid
+                            st.session_state.current_job_id = job_id
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"ジョブ読み込みエラー: {e}")
+
+            # ── スクリーンショット / ジョブ履歴リフレッシュ ──
+            st.divider()
+            col_ss, col_ref = st.columns(2)
+            with col_ss:
+                if st.button("📷 画面", use_container_width=True,
+                             disabled=st.session_state.is_streaming):
+                    with st.spinner("キャプチャ中..."):
+                        img = st.session_state.client.get_screenshot()
+                        if img:
+                            st.session_state.screenshot_bytes = img
+                            st.rerun()
+                        else:
+                            st.error("失敗しました")
+            with col_ref:
+                if st.button("🔄 履歴", use_container_width=True):
+                    try:
+                        jobs = st.session_state.client.list_jobs()
+                        st.session_state.job_history = jobs
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
+
+            # ── PC セッション履歴（20件）──
+            st.divider()
+            col_pc_title, col_pc_btn = st.columns([3, 1])
+            with col_pc_title:
+                st.subheader("💾 PC履歴")
+            with col_pc_btn:
+                if st.button("🔄", key="load_pc_sessions",
+                             help="PCのClaude会話履歴を取得"):
+                    try:
+                        with st.spinner("読み込み中..."):
+                            sessions = st.session_state.client.list_sessions()
+                        st.session_state.pc_sessions = sessions
+                        st.session_state.pc_sessions_loaded = True
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"取得失敗: {e}")
+
+            if st.session_state.pc_sessions:
+                for sess in st.session_state.pc_sessions[:20]:
+                    sid = sess.get("session_id", "")
+                    last_mod = sess.get("last_modified", 0)
+                    last_user = sess.get("last_user_msg", "")
+                    last_assist = sess.get("last_assist_msg", "")
+                    project = sess.get("project_dir", "")
+                    line_count = sess.get("line_count", 0)
+                    preview_text = last_user or last_assist or project
+                    preview = (preview_text[:38] + "…") if len(preview_text) > 38 else preview_text
+                    time_str = format_timestamp(last_mod) if last_mod else ""
+                    is_current = (sid == st.session_state.session_id)
+                    label = f"{'▶ ' if is_current else ''}{time_str} {preview}"
+                    if st.button(label, key=f"pcsess_{sid}", use_container_width=True,
+                                 help=f"Session: {sid[:8]}…\n{line_count}行 | {project[-30:]}"):
+                        try:
+                            with st.spinner("セッション読み込み中..."):
+                                data = st.session_state.client.get_session_events(sid)
+                            events = data.get("events", [])
+                            st.session_state.messages = process_native_events(events)
+                            add_session(sid)
+                            st.session_state.session_id = sid
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"読み込みエラー: {e}")
+            elif st.session_state.pc_sessions_loaded:
+                st.caption("セッションが見つかりません")
+            else:
+                st.caption("🔄 ボタンで一覧を取得")
 
 
 # ─── メインエリア ──────────────────────────────────────────
 
 # タイトル（未接続時）
 if not st.session_state.connected:
-    st.title("🤖 Claude Code Remote")
-    st.markdown("""
-    ### セットアップ手順
+    if IS_MOBILE:
+        # モバイル: コンパクトな案内
+        st.markdown("""
+        ## 🤖 Claude Code Remote
+        ### セットアップ
+        1. ← サイドバー（☰）を開く
+        2. **ngrok URL** と **Auth Token** を入力
+        3. **🔌** ボタンをタップ
+        """)
+    else:
+        st.title("🤖 Claude Code Remote")
+        st.markdown("""
+        ### セットアップ手順
 
-    1. **Flask バックエンド** を自PC上で起動（ngrok経由で公開）
-    2. サイドバーに **ngrok URL** と **Auth Token** を入力
-    3. **接続** ボタンをクリック
+        1. **Flask バックエンド** を自PC上で起動（ngrok経由で公開）
+        2. サイドバーに **ngrok URL** と **Auth Token** を入力
+        3. **接続** ボタンをクリック
 
-    > ℹ️ Streamlit Cloud経由でFlask APIにアクセスするため、
-    > ngrokドメインがブロックされるネットワークでも利用可能です。
-    """)
+        > ℹ️ Streamlit Cloud経由でFlask APIにアクセスするため、
+        > ngrokドメインがブロックされるネットワークでも利用可能です。
+        """)
     st.stop()
 
 # ── スクリーンショット表示 ──
 if st.session_state.screenshot_bytes:
-    with st.expander("🖥️ PC画面キャプチャ", expanded=True):
-        col_img, col_btn = st.columns([6, 1])
-        with col_img:
+    if IS_MOBILE:
+        # モバイル: フル幅表示 + 閉じる/更新ボタンを下に配置
+        with st.expander("🖥️ PC画面", expanded=True):
             st.image(st.session_state.screenshot_bytes,
-                     caption="最新のスクリーンショット",
                      use_container_width=True)
-        with col_btn:
-            if st.button("✕ 閉じる", key="close_screenshot"):
-                st.session_state.screenshot_bytes = None
-                st.rerun()
-            if st.button("🔄 更新", key="refresh_screenshot"):
-                with st.spinner("更新中..."):
-                    img = st.session_state.client.get_screenshot()
-                    if img:
-                        st.session_state.screenshot_bytes = img
-                        st.rerun()
+            mc1, mc2 = st.columns(2)
+            with mc1:
+                if st.button("✕ 閉じる", key="close_screenshot", use_container_width=True):
+                    st.session_state.screenshot_bytes = None
+                    st.rerun()
+            with mc2:
+                if st.button("🔄 更新", key="refresh_screenshot", use_container_width=True):
+                    with st.spinner("更新中..."):
+                        img = st.session_state.client.get_screenshot()
+                        if img:
+                            st.session_state.screenshot_bytes = img
+                            st.rerun()
+    else:
+        with st.expander("🖥️ PC画面キャプチャ", expanded=True):
+            col_img, col_btn = st.columns([6, 1])
+            with col_img:
+                st.image(st.session_state.screenshot_bytes,
+                         caption="最新のスクリーンショット",
+                         use_container_width=True)
+            with col_btn:
+                if st.button("✕ 閉じる", key="close_screenshot"):
+                    st.session_state.screenshot_bytes = None
+                    st.rerun()
+                if st.button("🔄 更新", key="refresh_screenshot"):
+                    with st.spinner("更新中..."):
+                        img = st.session_state.client.get_screenshot()
+                        if img:
+                            st.session_state.screenshot_bytes = img
+                            st.rerun()
 
 # ── チャット履歴表示 ──
 for msg in st.session_state.messages:
