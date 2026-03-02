@@ -1196,6 +1196,7 @@ for msg in st.session_state.messages:
                 # ツール結果
                 if tool_result:
                     # 長い結果は折りたたみ
+                    tool_id = tool.get("id", "")
                     if len(tool_result) > 500:
                         st.text_area(
                             "Result",
@@ -1203,6 +1204,7 @@ for msg in st.session_state.messages:
                             height=200,
                             disabled=True,
                             label_visibility="collapsed",
+                            key=f"tool_result_{tool_id}_{hash(tool_result[:100])}",
                         )
                     else:
                         st.code(tool_result, language=None)
@@ -1411,6 +1413,7 @@ if prompt := st.chat_input(
                                         st.text_area(
                                             "r", value=content, height=150,
                                             disabled=True, label_visibility="collapsed",
+                                            key=f"stream_result_{pending_tool['id']}_{hash(content[:100])}",
                                         )
                                     else:
                                         st.code(content, language=None)
