@@ -19,18 +19,6 @@ import streamlit as st
 
 from backend_client import BackendClient
 
-# ─── 使用量取得ヘルパー ──────────────────────────────────────
-def _fetch_plan_usage(client: BackendClient, force_refresh: bool = False) -> dict:
-    """プラン使用量を取得。get_plan_usage() が無い場合は直接HTTPリクエスト"""
-    if hasattr(client, "get_plan_usage"):
-        return client.get_plan_usage(force_refresh=force_refresh)
-    params = {"refresh": "1"} if force_refresh else {}
-    resp = client.session.get(
-        f"{client.base_url}/api/plan_usage", params=params, timeout=15,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
 # ─── ページ設定 ───────────────────────────────────────────
 st.set_page_config(
     page_title="Claude Code Remote",
@@ -200,7 +188,6 @@ def init_state():
         "screenshot_bytes": None,               # 最新スクリーンショット
         "pc_sessions": [],                      # PCのClaude履歴セッション一覧
         "pc_sessions_loaded": False,            # 一覧取得済みフラグ
-        "usage_data": None,                     # 使用量データキャッシュ
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -667,114 +654,6 @@ with st.sidebar:
     # ════════════════════════════════════════════
 
     if st.session_state.connected:
-
-        # ── 使用量ダッシュボード（プラン使用量） ──
-        _u_col, _u_btn = st.columns([4, 1])
-        with _u_col:
-            st.markdown("**📊 使用量**")
-        with _u_btn:
-            if st.button("🔄", key="refresh_usage", help="使用量を更新"):
-                try:
-                    with st.spinner("集計中…"):
-                        st.session_state.usage_data = _fetch_plan_usage(
-                            st.session_state.client, force_refresh=True
-                        )
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"取得失敗: {e}")
-
-        # 初回自動取得
-        if st.session_state.usage_data is None:
-            try:
-                st.session_state.usage_data = _fetch_plan_usage(st.session_state.client)
-            except Exception as e:
-                st.caption(f"⚠️ 使用量取得エラー: {e}")
-
-        ud = st.session_state.usage_data
-        if ud and "today" in ud:
-            td = ud.get("today", {})
-            wk = ud.get("week", {})
-            limits = ud.get("limits", {})
-            td_tok = td.get("tokens_total", 0)
-            wk_tok = wk.get("tokens_total", 0)
-            td_pct = td.get("percent", 0)
-            wk_pct = wk.get("percent", 0)
-            td_msg = td.get("messages", 0)
-            wk_msg = wk.get("messages", 0)
-            wk_reset = wk.get("reset", "")
-            daily_limit = limits.get("daily_tokens", 0)
-            weekly_limit = limits.get("weekly_tokens", 0)
-
-            def _tok_fmt(tok: int) -> str:
-                if tok >= 1_000_000:
-                    return f"{tok / 1_000_000:.1f}M"
-                elif tok >= 1000:
-                    return f"{tok // 1000}K"
-                return str(tok)
-
-            def _progress_bar(pct: float, label: str):
-                """パーセンテージに応じた色付きプログレスバーを描画"""
-                color = "#6bcb77" if pct < 50 else "#ffd93d" if pct < 80 else "#ff6b6b"
-                width = min(pct, 100)
-                st.markdown(f"""
-                <div style="margin: 2px 0 6px 0;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                        <span style="font-size: 12px; color: #bbb;">{label}</span>
-                        <span style="font-size: 12px; color: {color}; font-weight: bold;">{pct:.1f}%</span>
-                    </div>
-                    <div style="background: #2a2a3e; border-radius: 4px; height: 8px; overflow: hidden;">
-                        <div style="background: {color}; width: {width}%; height: 100%; border-radius: 4px;
-                                    transition: width 0.5s;"></div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # モデル別内訳
-            def _model_breakdown(tokens_by_model: dict) -> str:
-                parts = []
-                for model, tok in sorted(
-                    tokens_by_model.items(),
-                    key=lambda x: x[1], reverse=True,
-                ):
-                    short = model.replace("claude-", "").split("-2025")[0]
-                    parts.append(f"{short}: {_tok_fmt(tok)}")
-                return " | ".join(parts[:3])
-
-            if IS_MOBILE:
-                # ── 今日 ──
-                _progress_bar(td_pct, f"📅 今日  {_tok_fmt(td_tok)} / {_tok_fmt(daily_limit)}")
-                td_models = td.get("tokens_by_model", {})
-                if td_models:
-                    st.caption(f"　{_model_breakdown(td_models)}")
-                # ── 今週 ──
-                _progress_bar(wk_pct, f"📅 今週  {_tok_fmt(wk_tok)} / {_tok_fmt(weekly_limit)}")
-                wk_models = wk.get("tokens_by_model", {})
-                if wk_models:
-                    st.caption(f"　{_model_breakdown(wk_models)}")
-                if wk_reset:
-                    st.caption(f"　リセット: {wk_reset}")
-            else:
-                # ── 今日 ──
-                _progress_bar(td_pct, f"📅 今日  {_tok_fmt(td_tok)} / {_tok_fmt(daily_limit)}  ({td_msg}msg)")
-                td_models = td.get("tokens_by_model", {})
-                if td_models:
-                    st.caption(_model_breakdown(td_models))
-                # ── 今週 ──
-                _progress_bar(wk_pct, f"📅 今週  {_tok_fmt(wk_tok)} / {_tok_fmt(weekly_limit)}  ({wk_msg}msg)")
-                wk_models = wk.get("tokens_by_model", {})
-                if wk_models:
-                    st.caption(_model_breakdown(wk_models))
-                if wk_reset:
-                    st.caption(f"リセット: {wk_reset}")
-
-            # 取得時刻（JST）
-            cached_jst = ud.get("cached_at_jst", "")
-            if cached_jst:
-                st.caption(f"※ 推定値 | 取得: {cached_jst.split(' ')[1]}")
-        elif st.session_state.usage_data is None:
-            st.caption("🔄 で使用量を取得")
-
-        st.divider()
 
         MODEL_OPTIONS = {
             "claude-sonnet-4-5": "⚡ Sonnet 4.5（速い・安い）",
