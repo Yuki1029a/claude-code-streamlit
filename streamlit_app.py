@@ -195,6 +195,14 @@ def init_state():
 
 init_state()
 
+# ─── is_streaming スタック検出 ─────────────────────────────
+# ストリーミング中に例外が発生すると is_streaming=True のまま残り、
+# 次の実行でキャンセルボタン表示＋入力無効化のフリーズ状態になる。
+# Streamlit の再実行時にはストリーミング while ループは動いていないため、
+# このフラグが True なら stale と判断してリセットする。
+if st.session_state.is_streaming:
+    st.session_state.is_streaming = False
+    st.session_state.cancel_requested = False
 
 # ─── モバイル自動検出 ──────────────────────────────────────
 # 初回アクセス時のみJSで画面幅を検出し ?dv=m|d をURLに付与してリロード
@@ -1177,189 +1185,192 @@ if prompt := st.chat_input(
     all_events = []
     done = False
 
-    while not done:
-        # キャンセルチェック
-        if st.session_state.cancel_requested:
-            stop_event.set()
-            break
-
-        # キューからイベント取得（0.3秒タイムアウト）
-        batch = []
-        try:
-            while True:
-                ev = event_queue.get_nowait()
-                batch.append(ev)
-        except queue.Empty:
-            pass
-
-        if not batch:
-            time.sleep(0.3)
-            status_placeholder.caption("⏳ 応答待機中...")
-            continue
-
-        for ev in batch:
-            if ev is None:
-                done = True
-                break
-
-            all_events.append(ev)
-            etype = ev.get("type", "")
-
-            # system init
-            if etype == "system" and ev.get("subtype") == "init":
-                sid = ev.get("session_id")
-                if sid:
-                    add_session(sid)
-                    st.session_state.session_id = sid
-
-            # stream_event
-            elif etype == "stream_event":
-                inner = ev.get("event", {})
-                inner_type = inner.get("type", "")
-
-                if inner_type == "content_block_start":
-                    cb = inner.get("content_block", {})
-                    if cb.get("type") == "text":
-                        pass
-                    elif cb.get("type") == "tool_use":
-                        if pending_tool:
-                            accumulated_tools.append(pending_tool)
-                        pending_tool = {
-                            "name": cb.get("name", "tool"),
-                            "id": cb.get("id", ""),
-                            "input_str": "",
-                            "result": "",
-                        }
-                        status_placeholder.caption(f"🔧 {cb.get('name', 'tool')}...")
-
-                elif inner_type == "content_block_delta":
-                    delta = inner.get("delta", {})
-                    if delta.get("type") == "text_delta":
-                        accumulated_text += delta.get("text", "")
-                        text_placeholder.markdown(accumulated_text + " ▌")
-                        status_placeholder.empty()
-                    elif delta.get("type") == "input_json_delta":
-                        if pending_tool:
-                            pending_tool["input_str"] += delta.get("partial_json", "")
-
-            # assistant (完成メッセージ)
-            elif etype == "assistant":
-                msg = ev.get("message", {})
-                for block in msg.get("content", []):
-                    if block.get("type") == "text":
-                        accumulated_text = block.get("text", "")
-                        text_placeholder.markdown(accumulated_text)
-
-            # user = tool_result
-            elif etype == "user":
-                msg = ev.get("message", {})
-                for block in msg.get("content", []):
-                    if block.get("type") == "tool_result":
-                        content = block.get("content", "")
-                        if isinstance(content, list):
-                            content = "\n".join(
-                                item.get("text", "")
-                                for item in content
-                                if isinstance(item, dict)
-                            )
-                        if pending_tool:
-                            pending_tool["result"] = content
-                            accumulated_tools.append(pending_tool)
-                            # ツール表示
-                            with tool_container.expander(
-                                f"🔧 {pending_tool['name']}", expanded=False
-                            ):
-                                if pending_tool["input_str"]:
-                                    st.code(
-                                        parse_tool_input_display(pending_tool["input_str"]),
-                                        language="json",
-                                    )
-                                fp = extract_file_path(pending_tool["input_str"])
-                                if fp:
-                                    fname = get_path_basename(fp)
-                                    if is_image_path(fp):
-                                        st.markdown(f"📷 **{fname}**")
-                                        try:
-                                            img_bytes, mime = st.session_state.client.get_file_bytes(fp)
-                                            if img_bytes:
-                                                st.image(img_bytes, caption=fname, use_container_width=True)
-                                        except Exception:
-                                            pass
-                                    else:
-                                        st.markdown(f"📄 **{fname}**")
-                                if content:
-                                    if len(content) > 500:
-                                        st.text_area(
-                                            "r", value=content, height=150,
-                                            disabled=True, label_visibility="collapsed",
-                                            key=f"stream_result_{pending_tool['id']}_{hash(content[:100])}",
-                                        )
-                                    else:
-                                        st.code(content, language=None)
-                            pending_tool = None
-
-            # result (コスト)
-            elif etype == "result":
-                sid = ev.get("session_id")
-                if sid:
-                    add_session(sid)
-                    st.session_state.session_id = sid
-                cost = ev.get("cost_usd")
-                usage = ev.get("usage", {})
-                parts = []
-                if cost is not None:
-                    parts.append(f"${cost:.4f}")
-                if usage.get("input_tokens"):
-                    parts.append(f"in:{usage['input_tokens']}")
-                if usage.get("output_tokens"):
-                    parts.append(f"out:{usage['output_tokens']}")
-                if parts:
-                    cost_info = " | ".join(parts)
-
-            # error / stderr
-            elif etype in ("error", "stderr"):
-                text = ev.get("text", "")
-                if text:
-                    streaming_container.markdown(
-                        f'<div class="error-msg">⚠️ {text}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-            # done
-            elif etype == "done":
-                done = True
-                break
-
-    # ストリーミング完了後の処理
-    status_placeholder.empty()
-    text_placeholder.markdown(accumulated_text)  # カーソル除去
-
-    # pending_toolを片付ける
-    if pending_tool:
-        accumulated_tools.append(pending_tool)
-
-    # コスト表示
-    if cost_info:
-        streaming_container.markdown(
-            f'<div class="cost-info">{cost_info}</div>',
-            unsafe_allow_html=True,
-        )
-
-    # メッセージ履歴に追加
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": accumulated_text,
-        "tool_blocks": accumulated_tools,
-        "cost_info": cost_info,
-    })
-
-    st.session_state.is_streaming = False
-    st.session_state.cancel_requested = False
-
-    # ジョブ履歴更新
     try:
-        st.session_state.job_history = st.session_state.client.list_jobs()
-    except Exception:
-        pass
+        while not done:
+            # キャンセルチェック
+            if st.session_state.cancel_requested:
+                stop_event.set()
+                break
+
+            # キューからイベント取得（0.3秒タイムアウト）
+            batch = []
+            try:
+                while True:
+                    ev = event_queue.get_nowait()
+                    batch.append(ev)
+            except queue.Empty:
+                pass
+
+            if not batch:
+                time.sleep(0.3)
+                status_placeholder.caption("⏳ 応答待機中...")
+                continue
+
+            for ev in batch:
+                if ev is None:
+                    done = True
+                    break
+
+                all_events.append(ev)
+                etype = ev.get("type", "")
+
+                # system init
+                if etype == "system" and ev.get("subtype") == "init":
+                    sid = ev.get("session_id")
+                    if sid:
+                        add_session(sid)
+                        st.session_state.session_id = sid
+
+                # stream_event
+                elif etype == "stream_event":
+                    inner = ev.get("event", {})
+                    inner_type = inner.get("type", "")
+
+                    if inner_type == "content_block_start":
+                        cb = inner.get("content_block", {})
+                        if cb.get("type") == "text":
+                            pass
+                        elif cb.get("type") == "tool_use":
+                            if pending_tool:
+                                accumulated_tools.append(pending_tool)
+                            pending_tool = {
+                                "name": cb.get("name", "tool"),
+                                "id": cb.get("id", ""),
+                                "input_str": "",
+                                "result": "",
+                            }
+                            status_placeholder.caption(f"🔧 {cb.get('name', 'tool')}...")
+
+                    elif inner_type == "content_block_delta":
+                        delta = inner.get("delta", {})
+                        if delta.get("type") == "text_delta":
+                            accumulated_text += delta.get("text", "")
+                            text_placeholder.markdown(accumulated_text + " ▌")
+                            status_placeholder.empty()
+                        elif delta.get("type") == "input_json_delta":
+                            if pending_tool:
+                                pending_tool["input_str"] += delta.get("partial_json", "")
+
+                # assistant (完成メッセージ)
+                elif etype == "assistant":
+                    msg = ev.get("message", {})
+                    for block in msg.get("content", []):
+                        if block.get("type") == "text":
+                            accumulated_text = block.get("text", "")
+                            text_placeholder.markdown(accumulated_text)
+
+                # user = tool_result
+                elif etype == "user":
+                    msg = ev.get("message", {})
+                    for block in msg.get("content", []):
+                        if block.get("type") == "tool_result":
+                            content = block.get("content", "")
+                            if isinstance(content, list):
+                                content = "\n".join(
+                                    item.get("text", "")
+                                    for item in content
+                                    if isinstance(item, dict)
+                                )
+                            if pending_tool:
+                                pending_tool["result"] = content
+                                accumulated_tools.append(pending_tool)
+                                # ツール表示
+                                with tool_container.expander(
+                                    f"🔧 {pending_tool['name']}", expanded=False
+                                ):
+                                    if pending_tool["input_str"]:
+                                        st.code(
+                                            parse_tool_input_display(pending_tool["input_str"]),
+                                            language="json",
+                                        )
+                                    fp = extract_file_path(pending_tool["input_str"])
+                                    if fp:
+                                        fname = get_path_basename(fp)
+                                        if is_image_path(fp):
+                                            st.markdown(f"📷 **{fname}**")
+                                            try:
+                                                img_bytes, mime = st.session_state.client.get_file_bytes(fp)
+                                                if img_bytes:
+                                                    st.image(img_bytes, caption=fname, use_container_width=True)
+                                            except Exception:
+                                                pass
+                                        else:
+                                            st.markdown(f"📄 **{fname}**")
+                                    if content:
+                                        if len(content) > 500:
+                                            st.text_area(
+                                                "r", value=content, height=150,
+                                                disabled=True, label_visibility="collapsed",
+                                                key=f"stream_result_{pending_tool['id']}_{hash(content[:100])}",
+                                            )
+                                        else:
+                                            st.code(content, language=None)
+                                pending_tool = None
+
+                # result (コスト)
+                elif etype == "result":
+                    sid = ev.get("session_id")
+                    if sid:
+                        add_session(sid)
+                        st.session_state.session_id = sid
+                    cost = ev.get("cost_usd")
+                    usage = ev.get("usage", {})
+                    parts = []
+                    if cost is not None:
+                        parts.append(f"${cost:.4f}")
+                    if usage.get("input_tokens"):
+                        parts.append(f"in:{usage['input_tokens']}")
+                    if usage.get("output_tokens"):
+                        parts.append(f"out:{usage['output_tokens']}")
+                    if parts:
+                        cost_info = " | ".join(parts)
+
+                # error / stderr
+                elif etype in ("error", "stderr"):
+                    text = ev.get("text", "")
+                    if text:
+                        streaming_container.markdown(
+                            f'<div class="error-msg">⚠️ {text}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                # done
+                elif etype == "done":
+                    done = True
+                    break
+
+    finally:
+        # 例外が発生しても必ずクリーンアップする
+        status_placeholder.empty()
+        text_placeholder.markdown(accumulated_text)  # カーソル除去
+
+        # pending_toolを片付ける
+        if pending_tool:
+            accumulated_tools.append(pending_tool)
+
+        # コスト表示
+        if cost_info:
+            streaming_container.markdown(
+                f'<div class="cost-info">{cost_info}</div>',
+                unsafe_allow_html=True,
+            )
+
+        # メッセージ履歴に追加
+        if accumulated_text or accumulated_tools:
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": accumulated_text,
+                "tool_blocks": accumulated_tools,
+                "cost_info": cost_info,
+            })
+
+        st.session_state.is_streaming = False
+        st.session_state.cancel_requested = False
+
+        # ジョブ履歴更新
+        try:
+            st.session_state.job_history = st.session_state.client.list_jobs()
+        except Exception:
+            pass
 
     st.rerun()
