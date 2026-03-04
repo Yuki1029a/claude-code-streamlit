@@ -1180,6 +1180,7 @@ if prompt := st.chat_input(
 
     accumulated_text = ""
     accumulated_tools = []
+    accumulated_errors = []
     pending_tool = None
     cost_info = None
     all_events = []
@@ -1329,6 +1330,7 @@ if prompt := st.chat_input(
                 elif etype in ("error", "stderr"):
                     text = ev.get("text", "")
                     if text:
+                        accumulated_errors.append(text)
                         streaming_container.markdown(
                             f'<div class="error-msg">⚠️ {text}</div>',
                             unsafe_allow_html=True,
@@ -1354,6 +1356,14 @@ if prompt := st.chat_input(
                 f'<div class="cost-info">{cost_info}</div>',
                 unsafe_allow_html=True,
             )
+
+        # エラーがあればテキストに含める
+        if accumulated_errors:
+            error_text = "\n".join(f"⚠️ {e}" for e in accumulated_errors)
+            if accumulated_text:
+                accumulated_text += "\n\n" + error_text
+            else:
+                accumulated_text = error_text
 
         # メッセージ履歴に追加
         if accumulated_text or accumulated_tools:
