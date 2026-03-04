@@ -188,6 +188,7 @@ def init_state():
         "screenshot_bytes": None,               # 最新スクリーンショット
         "pc_sessions": [],                      # PCのClaude履歴セッション一覧
         "pc_sessions_loaded": False,            # 一覧取得済みフラグ
+        "session_dirs": {},                     # {session_id: cwd} セッション→ディレクトリ対応
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -410,6 +411,9 @@ def process_events(events: list) -> list:
             if sid:
                 add_session(sid)
                 st.session_state.session_id = sid
+                init_cwd = ev.get("cwd")
+                if init_cwd:
+                    st.session_state.session_dirs[sid] = init_cwd
 
         # ── assistant (完成メッセージ) ──
         elif etype == "assistant":
@@ -721,7 +725,15 @@ with st.sidebar:
                 format_func=lambda x: session_labels.get(x, x),
                 index=session_options.index(current),
             )
-            st.session_state.session_id = None if sel_session == "🆕 新規" else sel_session
+            new_sid = None if sel_session == "🆕 新規" else sel_session
+            if new_sid != st.session_state.session_id:
+                st.session_state.session_id = new_sid
+                if new_sid and new_sid in st.session_state.session_dirs:
+                    saved_cwd = st.session_state.session_dirs[new_sid]
+                    if saved_cwd in st.session_state.flat_dirs:
+                        st.session_state.selected_dir = saved_cwd
+            else:
+                st.session_state.session_id = new_sid
 
             st.divider()
 
@@ -872,7 +884,22 @@ with st.sidebar:
                     index=session_options.index(current),
                     label_visibility="collapsed",
                 )
-                st.session_state.session_id = None if sel_session == "(新規セッション)" else sel_session
+                new_sid = None if sel_session == "(新規セッション)" else sel_session
+                if new_sid != st.session_state.session_id:
+                    st.session_state.session_id = new_sid
+                    # セッション切替時にディレクトリを自動復元
+                    if new_sid and new_sid in st.session_state.session_dirs:
+                        saved_cwd = st.session_state.session_dirs[new_sid]
+                        if saved_cwd in st.session_state.flat_dirs:
+                            st.session_state.selected_dir = saved_cwd
+                else:
+                    st.session_state.session_id = new_sid
+
+                # セッションのディレクトリ情報を表示
+                if sel_session != "(新規セッション)" and sel_session in st.session_state.session_dirs:
+                    saved = st.session_state.session_dirs[sel_session]
+                    if st.session_state.selected_dir and st.session_state.selected_dir != saved:
+                        st.warning(f"⚠️ このセッションの元ディレクトリ: {get_path_basename(saved)}")
 
             # ── ジョブ履歴（10件）──
             if st.session_state.job_history:
@@ -967,6 +994,89 @@ with st.sidebar:
                 st.caption("セッションが見つかりません")
             else:
                 st.caption("🔄 ボタンで一覧を取得")
+
+            # ── 修正リクエスト ──
+            st.divider()
+            st.subheader("🔧 修正リクエスト")
+            st.caption("エラーや不具合をPC側のClaude Codeに送信して修正を依頼")
+            fix_request = st.text_area(
+                "修正内容",
+                placeholder="例: ○○のグラフが表示されない、○○のエラーが出る等",
+                height=100,
+                label_visibility="collapsed",
+                key="fix_request_text",
+            )
+            fix_use_chrome = st.checkbox("Chromeで視覚確認を含める", value=True, key="fix_chrome")
+            if st.button("📤 修正リクエスト送信", use_container_width=True,
+                         disabled=st.session_state.is_streaming or not fix_request):
+                # 修正プロンプトを構築
+                fix_prompt = f"以下の修正を行ってください:\n\n{fix_request}"
+                if fix_use_chrome:
+                    fix_prompt += "\n\n修正後はChromeブラウザで動作を視覚的に確認してください。"
+                # 通常のプロンプトとして送信
+                cwd = st.session_state.selected_dir
+                if cwd:
+                    st.session_state.messages.append({
+                        "role": "user",
+                        "content": f"🔧 修正リクエスト: {fix_request}",
+                        "tool_blocks": [],
+                        "cost_info": None,
+                    })
+                    try:
+                        result = st.session_state.client.send_prompt(
+                            prompt=fix_prompt,
+                            cwd=cwd,
+                            session_id=st.session_state.session_id,
+                            model=st.session_state.selected_model,
+                        )
+                        job_id = result.get("job_id")
+                        if job_id:
+                            st.session_state.current_job_id = job_id
+                            st.success("送信しました")
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"送信エラー: {e}")
+                else:
+                    st.error("作業ディレクトリを選択してください")
+
+        # ── モバイル: 修正リクエスト（コンパクト版）──
+        if IS_MOBILE:
+            st.divider()
+            st.markdown("**🔧 修正リクエスト**")
+            fix_request_m = st.text_area(
+                "修正内容",
+                placeholder="エラー内容や修正依頼を入力",
+                height=80,
+                label_visibility="collapsed",
+                key="fix_request_mobile",
+            )
+            if st.button("📤 送信", use_container_width=True,
+                         disabled=st.session_state.is_streaming or not fix_request_m,
+                         key="fix_send_mobile"):
+                fix_prompt = f"以下の修正を行ってください:\n\n{fix_request_m}\n\n修正後はChromeブラウザで動作を視覚的に確認してください。"
+                cwd = st.session_state.selected_dir
+                if cwd:
+                    st.session_state.messages.append({
+                        "role": "user",
+                        "content": f"🔧 修正リクエスト: {fix_request_m}",
+                        "tool_blocks": [],
+                        "cost_info": None,
+                    })
+                    try:
+                        result = st.session_state.client.send_prompt(
+                            prompt=fix_prompt,
+                            cwd=cwd,
+                            session_id=st.session_state.session_id,
+                            model=st.session_state.selected_model,
+                        )
+                        job_id = result.get("job_id")
+                        if job_id:
+                            st.session_state.current_job_id = job_id
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"送信エラー: {e}")
+                else:
+                    st.error("作業ディレクトリを選択")
 
 
 # ─── メインエリア ──────────────────────────────────────────
@@ -1221,6 +1331,10 @@ if prompt := st.chat_input(
                     if sid:
                         add_session(sid)
                         st.session_state.session_id = sid
+                        # セッション→ディレクトリ対応を保存
+                        init_cwd = ev.get("cwd")
+                        if init_cwd:
+                            st.session_state.session_dirs[sid] = init_cwd
 
                 # stream_event
                 elif etype == "stream_event":
