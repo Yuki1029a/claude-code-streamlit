@@ -21,147 +21,252 @@ from backend_client import BackendClient
 
 # ─── ページ設定 ───────────────────────────────────────────
 st.set_page_config(
-    page_title="Claude Code Remote",
-    page_icon="🤖",
+    page_title="CLAUDE TERMINAL v2.0",
+    page_icon="💻",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ─── カスタムCSS ──────────────────────────────────────────
+# ─── カスタムCSS (Terminal Style) ──────────────────────────────────────────
 st.markdown("""
 <style>
 
 /* ══════════════════════════════════════════════
-   共通スタイル
+   🖥️ TERMINAL HACKER THEME
+   Black background + Green text (#00ff00)
 ══════════════════════════════════════════════ */
-.stApp { font-family: 'Segoe UI', sans-serif; }
+
+/* メインアプリ背景 - 真っ黒 */
+.stApp {
+    background-color: #000000 !important;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+    color: #00ff00 !important;
+}
+
+/* メインコンテンツエリア */
+.main {
+    background-color: #000000 !important;
+}
+
+/* サイドバー */
+section[data-testid="stSidebar"] {
+    background-color: #000000 !important;
+    border-right: 1px solid #00ff00 !important;
+}
+
+section[data-testid="stSidebar"] * {
+    color: #00ff00 !important;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+}
+
+/* タイトル・見出し */
+h1, h2, h3, h4, h5, h6 {
+    color: #00ff00 !important;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+    text-shadow: 0 0 5px #00ff00;
+}
+
+/* テキスト全般 */
+p, span, div, label {
+    color: #00ff00 !important;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+}
+
+/* チャットメッセージ - ターミナル風 */
+.stChatMessage {
+    background-color: #000000 !important;
+    border: 1px solid #00ff00 !important;
+    border-radius: 0px !important;
+    color: #00ff00 !important;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+    padding: 10px !important;
+    margin-bottom: 10px !important;
+}
+
+.stChatMessage p {
+    color: #00ff00 !important;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+}
 
 /* コードブロック */
 .stChatMessage pre {
-    background: #0d1117;
-    border: 1px solid #30363d;
-    border-radius: 6px;
-    padding: 12px;
+    background: #000000 !important;
+    border: 1px solid #00ff00 !important;
+    border-radius: 0px !important;
+    padding: 12px !important;
+    color: #00ff00 !important;
     overflow-x: auto;
     overflow-y: auto;
-    position: relative;
 }
+
 .stChatMessage code {
-    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+    color: #00ff00 !important;
+    background: #000000 !important;
+}
+
+/* チャット入力欄 */
+.stChatInputContainer {
+    background-color: #000000 !important;
+    border: 1px solid #00ff00 !important;
+}
+
+.stChatInputContainer textarea {
+    background-color: #000000 !important;
+    color: #00ff00 !important;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+    border: none !important;
+}
+
+/* ボタン */
+.stButton > button {
+    background-color: #000000 !important;
+    color: #00ff00 !important;
+    border: 1px solid #00ff00 !important;
+    border-radius: 0px !important;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+    padding: 8px 16px !important;
+}
+
+.stButton > button:hover {
+    background-color: #00ff00 !important;
+    color: #000000 !important;
+    border: 1px solid #00ff00 !important;
+}
+
+/* 入力フィールド */
+input[type="text"],
+input[type="password"],
+textarea {
+    background-color: #000000 !important;
+    color: #00ff00 !important;
+    border: 1px solid #00ff00 !important;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+}
+
+/* セレクトボックス */
+div[data-baseweb="select"] {
+    background-color: #000000 !important;
+    border: 1px solid #00ff00 !important;
+}
+
+div[data-baseweb="select"] * {
+    background-color: #000000 !important;
+    color: #00ff00 !important;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+}
+
+/* エキスパンダー */
+.streamlit-expanderHeader {
+    background-color: #000000 !important;
+    color: #00ff00 !important;
+    border: 1px solid #00ff00 !important;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
 
 /* コスト表示 */
 .cost-info {
     font-size: 11px;
-    color: #888;
+    color: #00ff00 !important;
     text-align: center;
     margin: 4px 0;
+    opacity: 0.7;
 }
 
-/* エラーメッセージ */
+/* エラーメッセージ - 赤色で */
 .error-msg {
-    color: #ff6b6b;
-    background: rgba(255,107,107,0.1);
-    border-radius: 4px;
+    color: #ff0000 !important;
+    background: rgba(255,0,0,0.1) !important;
+    border: 1px solid #ff0000 !important;
+    border-radius: 0px !important;
     padding: 8px;
     margin: 4px 0;
 }
 
 /* ステータスバッジ */
-.status-running  { color: #ffd93d; }
-.status-completed{ color: #6bcb77; }
-.status-error    { color: #ff6b6b; }
-.status-cancelled{ color: #888;    }
+.status-running  { color: #ffff00 !important; }
+.status-completed{ color: #00ff00 !important; }
+.status-error    { color: #ff0000 !important; }
+.status-cancelled{ color: #888888 !important; }
+
+/* ツールカード左ボーダー */
+.tool-expander {
+    border-left: 3px solid #00ff00 !important;
+    padding-left: 8px;
+    margin: 4px 0;
+}
+
+/* テキストエリア */
+.stTextArea textarea {
+    background-color: #000000 !important;
+    color: #00ff00 !important;
+    border: 1px solid #00ff00 !important;
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+}
+
+/* 画像 */
+.stImage img {
+    border: 1px solid #00ff00 !important;
+}
+
+/* divider */
+hr {
+    border-color: #00ff00 !important;
+    opacity: 0.3 !important;
+}
+
+/* キャプション */
+.stCaption {
+    color: #00ff00 !important;
+    opacity: 0.7;
+}
 
 /* ══════════════════════════════════════════════
    📱 MOBILE  (≤768px)
 ══════════════════════════════════════════════ */
 @media (max-width: 768px) {
-
-    /* コンテナ余白 – チャット入力欄に隠れないよう下余白を大きく */
     .block-container {
         padding: 0.5rem 0.4rem 7rem !important;
         max-width: 100% !important;
     }
 
-    /* ボタン – 親指でタップしやすい最低高さ 48px */
     .stButton > button {
         min-height: 48px !important;
         font-size: 15px !important;
-        border-radius: 12px !important;
         padding: 6px 14px !important;
-        line-height: 1.3 !important;
     }
 
-    /* iOS でフォーム入力時にズームさせない（16px以上が必須） */
     input[type="text"],
     input[type="password"],
     textarea { font-size: 16px !important; }
 
-    /* セレクトボックス */
-    div[data-baseweb="select"] * { font-size: 14px !important; }
-
-    /* チャット入力 */
     .stChatInputContainer textarea {
         font-size: 16px !important;
         min-height: 48px !important;
     }
 
-    /* チャットバブル */
     .stChatMessage {
         padding: 6px 8px !important;
         margin-bottom: 6px !important;
     }
 
-    /* コードブロック – モバイルは縦スクロール可・小さめフォント */
     .stChatMessage pre {
         font-size: 12px !important;
         max-height: 180px !important;
     }
-    .stChatMessage code { font-size: 12px !important; }
 
-    /* エキスパンダー – タップしやすく */
-    .streamlit-expanderHeader {
-        min-height: 44px !important;
-        font-size: 14px !important;
-        padding: 8px 12px !important;
-    }
-
-    /* ツール結果テキストエリア */
-    .stTextArea textarea { font-size: 13px !important; }
-
-    /* 画像 – 縦に長くなりすぎない */
     .stImage img {
         max-height: 55vh !important;
         object-fit: contain !important;
     }
-
-    /* サイドバー内余白 */
-    section[data-testid="stSidebar"] > div:first-child {
-        padding: 1rem 0.75rem !important;
-    }
-
-    /* キャプション */
-    .stCaption { font-size: 12px !important; }
-
-    /* divider */
-    hr { margin: 0.5rem 0 !important; }
 }
 
 /* ══════════════════════════════════════════════
    💻 DESKTOP  (>768px)
 ══════════════════════════════════════════════ */
 @media (min-width: 769px) {
-
     .stChatMessage pre  { max-height: 450px; }
     .stChatMessage code { font-size: 13px; }
-
-    /* ツールカード左ボーダー */
-    .tool-expander {
-        border-left: 3px solid #e94560;
-        padding-left: 8px;
-        margin: 4px 0;
-    }
 }
 
 </style>
@@ -597,10 +702,10 @@ with st.sidebar:
     # ── ヘッダー ──
     if IS_MOBILE:
         # モバイル: コンパクトヘッダー
-        st.markdown("### 🤖 Claude Code")
+        st.markdown("### 💻 CLAUDE TERMINAL v2.0")
     else:
-        st.title("🤖 Claude Code")
-        st.caption("Remote Control via Streamlit")
+        st.title("💻 CLAUDE TERMINAL v2.0")
+        st.caption("█ SYSTEM READY █")
         st.divider()
 
     # ── 接続設定 ──
@@ -1136,7 +1241,7 @@ if not st.session_state.connected:
         3. **🔌** ボタンをタップ
         """)
     else:
-        st.title("🤖 Claude Code Remote")
+        st.title("💻 CLAUDE TERMINAL v2.0")
         st.markdown("""
         ### セットアップ手順
 
@@ -1203,7 +1308,11 @@ for msg in st.session_state.messages:
     with st.chat_message("assistant" if role == "assistant" else "user"):
         # テキスト部分
         if content:
-            st.markdown(content)
+            # ユーザー入力には「> 」プレフィックスを付ける (ターミナル風)
+            if role == "user":
+                st.markdown(f"> {content}")
+            else:
+                st.markdown(content)
 
         # ツール使用部分
         for tool in tool_blocks:
@@ -1412,7 +1521,7 @@ if prompt or _recovery_streaming:
     # ストリーミング中の表示エリア
     if prompt:
         with st.chat_message("user"):
-            st.markdown(prompt)
+            st.markdown(f"> {prompt}")
     elif _recovery_streaming:
         st.info("🔄 実行中のジョブに再接続しました")
 
