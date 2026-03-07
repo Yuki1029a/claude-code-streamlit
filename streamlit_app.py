@@ -1072,7 +1072,8 @@ with st.sidebar:
                         job_id = result.get("job_id")
                         if job_id:
                             st.session_state.current_job_id = job_id
-                            st.success("送信しました")
+                            st.session_state.is_streaming = True
+                            st.session_state.cancel_requested = False
                             st.rerun()
                     except Exception as e:
                         st.error(f"送信エラー: {e}")
@@ -1112,6 +1113,8 @@ with st.sidebar:
                         job_id = result.get("job_id")
                         if job_id:
                             st.session_state.current_job_id = job_id
+                            st.session_state.is_streaming = True
+                            st.session_state.cancel_requested = False
                             st.rerun()
                     except Exception as e:
                         st.error(f"送信エラー: {e}")
