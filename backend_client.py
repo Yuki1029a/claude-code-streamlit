@@ -130,6 +130,20 @@ class BackendClient:
         resp.raise_for_status()
         return resp.json()
 
+    def poll_job_events(self, job_id: str, offset: int = 0) -> dict:
+        """ジョブイベントをポーリング取得（SSEフォールバック用）
+
+        Returns:
+            {"status": str, "events": list, "total_events": int}
+        """
+        resp = self.session.get(
+            f"{self.base_url}/api/jobs/{job_id}",
+            params={"offset": offset},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def cancel_job(self, job_id: str) -> dict:
         """実行中のジョブをキャンセル"""
         resp = self.session.post(

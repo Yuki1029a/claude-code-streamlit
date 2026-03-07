@@ -189,6 +189,7 @@ def init_state():
         "pc_sessions": [],                      # PCのClaude履歴セッション一覧
         "pc_sessions_loaded": False,            # 一覧取得済みフラグ
         "session_dirs": {},                     # {session_id: cwd} セッション→ディレクトリ対応
+        "recovery_checked": False,              # ジョブ復帰チェック済みフラグ
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -199,11 +200,21 @@ init_state()
 # ─── is_streaming スタック検出 ─────────────────────────────
 # ストリーミング中に例外が発生すると is_streaming=True のまま残り、
 # 次の実行でキャンセルボタン表示＋入力無効化のフリーズ状態になる。
-# Streamlit の再実行時にはストリーミング while ループは動いていないため、
-# このフラグが True なら stale と判断してリセットする。
+# ただし current_job_id がある場合はジョブ復帰の可能性があるため、
+# Flask側のジョブ状態を確認してから判断する。
 if st.session_state.is_streaming:
-    st.session_state.is_streaming = False
-    st.session_state.cancel_requested = False
+    _stale_job_id = st.session_state.current_job_id
+    _job_still_running = False
+    if _stale_job_id and st.session_state.client:
+        try:
+            _jdata = st.session_state.client.poll_job_events(_stale_job_id, offset=0)
+            _job_still_running = (_jdata.get("status") == "running")
+        except Exception:
+            pass
+    if not _job_still_running:
+        # ジョブ完了 or 取得不可 → staleとしてリセット
+        st.session_state.is_streaming = False
+        st.session_state.cancel_requested = False
 
 # ─── モバイル自動検出 ──────────────────────────────────────
 # 初回アクセス時のみJSで画面幅を検出し ?dv=m|d をURLに付与してリロード
@@ -374,18 +385,50 @@ def process_native_events(events: list) -> list:
 
 # ─── ストリーミング処理 ────────────────────────────────────
 
+def _poll_fallback(client: BackendClient, job_id: str,
+                   event_queue: queue.Queue, stop_event: threading.Event,
+                   offset: int):
+    """SSE切断後のフォールバック: ポーリングで残りのイベントを取得"""
+    while not stop_event.is_set():
+        try:
+            result = client.poll_job_events(job_id, offset=offset)
+            events = result.get("events", [])
+            for ev in events:
+                event_queue.put(ev)
+                offset += 1
+            status = result.get("status", "")
+            if status in ("completed", "error", "cancelled"):
+                event_queue.put(None)
+                return
+            time.sleep(1.5)
+        except Exception:
+            time.sleep(3)
+    event_queue.put(None)
+
+
 def stream_worker(client: BackendClient, job_id: str,
                   event_queue: queue.Queue, stop_event: threading.Event):
-    """バックグラウンドスレッド: SSEイベントを受信してキューに入れる"""
+    """バックグラウンドスレッド: SSEイベントを受信してキューに入れる。
+    SSE切断時は自動的にポーリングにフォールバックする。"""
+    received = 0
+    sse_done = False
     try:
         for event in client.stream_job(job_id):
             if stop_event.is_set():
-                break
+                return
             event_queue.put(event)
-        event_queue.put(None)  # 完了マーカー
-    except Exception as e:
-        event_queue.put({"type": "error", "text": str(e)})
-        event_queue.put(None)
+            received += 1
+            # doneイベントを受信したら正常完了
+            if event.get("type") == "done":
+                sse_done = True
+        if sse_done:
+            event_queue.put(None)
+        else:
+            # SSEストリームが途中で切れた → ポーリングで残りを取得
+            _poll_fallback(client, job_id, event_queue, stop_event, offset=received)
+    except Exception:
+        # SSE接続エラー → ポーリングにフォールバック
+        _poll_fallback(client, job_id, event_queue, stop_event, offset=received)
 
 
 def process_events(events: list) -> list:
@@ -634,6 +677,8 @@ with st.sidebar:
                             sid = job.get("session_id_out")
                             if sid:
                                 add_session(sid)
+                        # ジョブ復帰チェックをリセット
+                        st.session_state.recovery_checked = False
                     except Exception:
                         pass
                     st.success(msg)
@@ -1225,11 +1270,88 @@ if st.session_state.is_streaming:
                 pass
 
 
+# ── ジョブ自動復帰（ブラウザ再接続時） ──
+# 接続済み & 復帰チェック未実施 & メッセージ履歴が空 の場合にジョブ復帰を試みる
+if (st.session_state.connected
+    and not st.session_state.recovery_checked
+    and not st.session_state.messages
+    and st.session_state.client
+    and st.session_state.job_history):
+    st.session_state.recovery_checked = True
+    # 直近のジョブから running / 最新 completed を探す
+    _running_jobs = [j for j in st.session_state.job_history if j.get("status") == "running"]
+    _recent_completed = [j for j in st.session_state.job_history
+                         if j.get("status") in ("completed", "error")]
+    _recovery_target = None
+    if _running_jobs:
+        _recovery_target = _running_jobs[0]
+    elif _recent_completed:
+        _recovery_target = _recent_completed[0]
+
+    if _recovery_target:
+        _rjob_id = _recovery_target.get("job_id")
+        _rjob_status = _recovery_target.get("status")
+        _rjob_prompt = _recovery_target.get("prompt", "")[:80]
+        _rjob_label = "🔄 実行中" if _rjob_status == "running" else "✅ 完了"
+        st.info(f"{_rjob_label}のジョブを検出: 「{_rjob_prompt}...」")
+
+        col_r1, col_r2 = st.columns(2)
+        with col_r1:
+            _do_recover = st.button("📥 結果を復帰", type="primary", use_container_width=True)
+        with col_r2:
+            _skip_recover = st.button("⏭️ スキップ", use_container_width=True)
+
+        if _do_recover:
+            try:
+                # ユーザーメッセージを復元
+                st.session_state.messages.append({
+                    "role": "user",
+                    "content": _recovery_target.get("prompt", "(プロンプト復帰)"),
+                    "tool_blocks": [],
+                    "cost_info": None,
+                })
+
+                if _rjob_status == "running":
+                    # 実行中ジョブ → ストリーミングに接続
+                    st.session_state.current_job_id = _rjob_id
+                    st.session_state.is_streaming = True
+                    st.session_state.cancel_requested = False
+                    st.rerun()
+                else:
+                    # 完了済みジョブ → イベント取得してメッセージに変換
+                    job_data = st.session_state.client.poll_job_events(_rjob_id)
+                    recovered_msgs = process_events(job_data.get("events", []))
+                    st.session_state.messages.extend(recovered_msgs)
+                    # セッションIDを復帰
+                    _rsid = _recovery_target.get("session_id_out")
+                    if _rsid:
+                        add_session(_rsid)
+                        st.session_state.session_id = _rsid
+                    st.rerun()
+            except Exception as e:
+                st.error(f"ジョブ復帰エラー: {e}")
+        elif _skip_recover:
+            st.rerun()
+
+
+# ── 復帰ストリーミング（実行中ジョブへの再接続） ──
+# is_streaming=True かつ current_job_id がある場合、ジョブに再接続する
+_recovery_streaming = (
+    st.session_state.is_streaming
+    and st.session_state.current_job_id
+    and st.session_state.client
+)
+
 # ── プロンプト入力 ──
-if prompt := st.chat_input(
-    "プロンプトを入力...",
-    disabled=st.session_state.is_streaming,
-):
+if not _recovery_streaming:
+    prompt = st.chat_input(
+        "プロンプトを入力...",
+        disabled=st.session_state.is_streaming,
+    )
+else:
+    prompt = None
+
+if prompt:
     if not st.session_state.connected or not st.session_state.client:
         st.error("バックエンドに接続してください")
         st.stop()
@@ -1268,6 +1390,9 @@ if prompt := st.chat_input(
         st.error(f"プロンプト送信エラー: {e}")
         st.stop()
 
+if prompt or _recovery_streaming:
+    job_id = st.session_state.current_job_id
+
     # ─── SSEストリーミング（バックグラウンドスレッド + ポーリング）───
     event_queue = queue.Queue()
     stop_event = threading.Event()
@@ -1280,8 +1405,11 @@ if prompt := st.chat_input(
     worker.start()
 
     # ストリーミング中の表示エリア
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    if prompt:
+        with st.chat_message("user"):
+            st.markdown(prompt)
+    elif _recovery_streaming:
+        st.info("🔄 実行中のジョブに再接続しました")
 
     streaming_container = st.chat_message("assistant")
     status_placeholder = st.empty()
