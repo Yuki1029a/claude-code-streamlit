@@ -190,6 +190,7 @@ def init_state():
         "pc_sessions_loaded": False,            # 一覧取得済みフラグ
         "session_dirs": {},                     # {session_id: cwd} セッション→ディレクトリ対応
         "recovery_checked": False,              # ジョブ復帰チェック済みフラグ
+        "active_job_cwd": None,                 # ジョブ再開時の作業ディレクトリ（Noneなら新規）
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -755,30 +756,16 @@ with st.sidebar:
                     if st.session_state.selected_dir in dir_options else 0,
                     label_visibility="collapsed",
                 )
+                # ディレクトリ手動変更 → ジョブ再開状態をリセット
+                if selected != st.session_state.selected_dir:
+                    st.session_state.active_job_cwd = None
+                    st.session_state.session_id = None
                 st.session_state.selected_dir = selected
 
-            # セッション（新規/継続）
-            session_options = ["🆕 新規"] + st.session_state.sessions
-            session_labels = {s: f"↩ {s[:8]}" for s in st.session_state.sessions}
-            session_labels["🆕 新規"] = "🆕 新規"
-            current = st.session_state.session_id or "🆕 新規"
-            if current not in session_options:
-                current = "🆕 新規"
-            sel_session = st.selectbox(
-                "💬 セッション",
-                options=session_options,
-                format_func=lambda x: session_labels.get(x, x),
-                index=session_options.index(current),
-            )
-            new_sid = None if sel_session == "🆕 新規" else sel_session
-            if new_sid != st.session_state.session_id:
-                st.session_state.session_id = new_sid
-                if new_sid and new_sid in st.session_state.session_dirs:
-                    saved_cwd = st.session_state.session_dirs[new_sid]
-                    if saved_cwd in st.session_state.flat_dirs:
-                        st.session_state.selected_dir = saved_cwd
-            else:
-                st.session_state.session_id = new_sid
+            # ジョブ再開中の表示
+            if st.session_state.active_job_cwd:
+                _ajcwd = get_path_basename(st.session_state.active_job_cwd)
+                st.caption(f"🔗 再開中: {_ajcwd}")
 
             st.divider()
 
@@ -818,18 +805,25 @@ with st.sidebar:
                     st.session_state.screenshot_bytes = None
                     st.rerun()
 
-            # ── モバイル: ジョブ履歴（直近5件）──
+            # ── モバイル: ジョブ一覧（直近5件）──
             if st.session_state.job_history:
-                st.markdown("**📋 最近のジョブ**")
-                for job in st.session_state.job_history[:5]:
+                st.markdown("**📋 ジョブ一覧**")
+                _m_running = [j for j in st.session_state.job_history if j.get("status") == "running"]
+                _m_others = [j for j in st.session_state.job_history if j.get("status") != "running"]
+                _m_sorted = _m_running + _m_others
+                for job in _m_sorted[:5]:
                     status = job.get("status", "?")
-                    prompt_preview = job.get("prompt", "")[:28]
+                    prompt_preview = job.get("prompt", "")[:22]
                     job_id = job.get("job_id", "")
+                    job_cwd = job.get("cwd", "")
+                    cwd_label = get_path_basename(job_cwd) if job_cwd else ""
                     created = job.get("created_at")
                     time_str = format_timestamp(created) if created else ""
-                    icon = {"running":"🟡","completed":"🟢","error":"🔴","cancelled":"⚪"}.get(status,"❓")
-                    if st.button(f"{icon} {time_str} {prompt_preview}",
-                                 key=f"job_{job_id}", use_container_width=True):
+                    icon = {"running": "🔄", "completed": "🟢", "error": "🔴", "cancelled": "⚪"}.get(status, "❓")
+                    is_active = (job_id == st.session_state.current_job_id)
+                    marker = "▶" if is_active else ""
+                    label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
+                    if st.button(label, key=f"job_{job_id}", use_container_width=True):
                         try:
                             job_data = st.session_state.client.get_job(job_id)
                             events = job_data.get("events", [])
@@ -839,6 +833,11 @@ with st.sidebar:
                                 add_session(sid)
                                 st.session_state.session_id = sid
                             st.session_state.current_job_id = job_id
+                            _jcwd = job_data.get("cwd") or job.get("cwd")
+                            if _jcwd:
+                                st.session_state.active_job_cwd = _jcwd
+                                if _jcwd in st.session_state.flat_dirs:
+                                    st.session_state.selected_dir = _jcwd
                             st.rerun()
                         except Exception as e:
                             st.error(f"エラー: {e}")
@@ -911,53 +910,43 @@ with st.sidebar:
                     if st.session_state.selected_dir in dir_options else 0,
                     label_visibility="collapsed",
                 )
+                # ディレクトリ手動変更 → ジョブ再開状態をリセット
+                if selected != st.session_state.selected_dir:
+                    st.session_state.active_job_cwd = None
+                    st.session_state.session_id = None
                 st.session_state.selected_dir = selected
 
-            # ── セッション ──
-            if st.session_state.sessions:
-                st.subheader("セッション")
-                session_options = ["(新規セッション)"] + st.session_state.sessions
-                session_labels = {s: f"Session {s[:8]}" for s in st.session_state.sessions}
-                session_labels["(新規セッション)"] = "🆕 新規セッション"
-                current = st.session_state.session_id or "(新規セッション)"
-                if current not in session_options:
-                    current = "(新規セッション)"
-                sel_session = st.selectbox(
-                    "Session",
-                    options=session_options,
-                    format_func=lambda x: session_labels.get(x, x),
-                    index=session_options.index(current),
-                    label_visibility="collapsed",
-                )
-                new_sid = None if sel_session == "(新規セッション)" else sel_session
-                if new_sid != st.session_state.session_id:
-                    st.session_state.session_id = new_sid
-                    # セッション切替時にディレクトリを自動復元
-                    if new_sid and new_sid in st.session_state.session_dirs:
-                        saved_cwd = st.session_state.session_dirs[new_sid]
-                        if saved_cwd in st.session_state.flat_dirs:
-                            st.session_state.selected_dir = saved_cwd
-                else:
-                    st.session_state.session_id = new_sid
+            # ── ジョブ再開中の表示 ──
+            if st.session_state.active_job_cwd:
+                _ajcwd = get_path_basename(st.session_state.active_job_cwd)
+                st.info(f"🔗 再開中: **{_ajcwd}**")
+                if st.button("🆕 新規ジョブに切替", use_container_width=True):
+                    st.session_state.active_job_cwd = None
+                    st.session_state.session_id = None
+                    st.session_state.messages = []
+                    st.rerun()
 
-                # セッションのディレクトリ情報を表示
-                if sel_session != "(新規セッション)" and sel_session in st.session_state.session_dirs:
-                    saved = st.session_state.session_dirs[sel_session]
-                    if st.session_state.selected_dir and st.session_state.selected_dir != saved:
-                        st.warning(f"⚠️ このセッションの元ディレクトリ: {get_path_basename(saved)}")
-
-            # ── ジョブ履歴（10件）──
+            # ── ジョブ一覧 ──
             if st.session_state.job_history:
-                st.subheader("ジョブ履歴")
-                for job in st.session_state.job_history[:10]:
+                st.subheader("ジョブ一覧")
+                # Running ジョブを先頭に
+                _running = [j for j in st.session_state.job_history if j.get("status") == "running"]
+                _others = [j for j in st.session_state.job_history if j.get("status") != "running"]
+                _sorted_jobs = _running + _others
+
+                for job in _sorted_jobs[:10]:
                     status = job.get("status", "?")
-                    prompt_preview = job.get("prompt", "")[:40]
+                    prompt_preview = job.get("prompt", "")[:35]
                     job_id = job.get("job_id", "")
+                    job_cwd = job.get("cwd", "")
+                    cwd_label = get_path_basename(job_cwd) if job_cwd else ""
                     created = job.get("created_at")
                     time_str = format_timestamp(created) if created else ""
-                    icon = {"running":"🟡","completed":"🟢","error":"🔴","cancelled":"⚪"}.get(status,"❓")
-                    if st.button(f"{icon} {time_str} {prompt_preview}",
-                                 key=f"job_{job_id}", use_container_width=True):
+                    icon = {"running": "🔄", "completed": "🟢", "error": "🔴", "cancelled": "⚪"}.get(status, "❓")
+                    is_active = (job_id == st.session_state.current_job_id)
+                    marker = "▶ " if is_active else ""
+                    label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
+                    if st.button(label, key=f"job_{job_id}", use_container_width=True):
                         try:
                             job_data = st.session_state.client.get_job(job_id)
                             events = job_data.get("events", [])
@@ -967,6 +956,12 @@ with st.sidebar:
                                 add_session(sid)
                                 st.session_state.session_id = sid
                             st.session_state.current_job_id = job_id
+                            # cwd を復帰
+                            _jcwd = job_data.get("cwd") or job.get("cwd")
+                            if _jcwd:
+                                st.session_state.active_job_cwd = _jcwd
+                                if _jcwd in st.session_state.flat_dirs:
+                                    st.session_state.selected_dir = _jcwd
                             st.rerun()
                         except Exception as e:
                             st.error(f"ジョブ読み込みエラー: {e}")
@@ -1059,7 +1054,7 @@ with st.sidebar:
                 if fix_use_chrome:
                     fix_prompt += "\n\n修正後はChromeブラウザで動作を視覚的に確認してください。"
                 # 通常のプロンプトとして送信
-                cwd = st.session_state.selected_dir
+                cwd = st.session_state.active_job_cwd or st.session_state.selected_dir
                 if cwd:
                     st.session_state.messages.append({
                         "role": "user",
@@ -1099,7 +1094,7 @@ with st.sidebar:
                          disabled=st.session_state.is_streaming or not fix_request_m,
                          key="fix_send_mobile"):
                 fix_prompt = f"以下の修正を行ってください:\n\n{fix_request_m}\n\n修正後はChromeブラウザで動作を視覚的に確認してください。"
-                cwd = st.session_state.selected_dir
+                cwd = st.session_state.active_job_cwd or st.session_state.selected_dir
                 if cwd:
                     st.session_state.messages.append({
                         "role": "user",
@@ -1311,6 +1306,13 @@ if (st.session_state.connected
                     "cost_info": None,
                 })
 
+                # cwd を復帰
+                _rcwd = _recovery_target.get("cwd")
+                if _rcwd:
+                    st.session_state.active_job_cwd = _rcwd
+                    if _rcwd in st.session_state.flat_dirs:
+                        st.session_state.selected_dir = _rcwd
+
                 if _rjob_status == "running":
                     # 実行中ジョブ → ストリーミングに接続
                     st.session_state.current_job_id = _rjob_id
@@ -1356,7 +1358,7 @@ if prompt:
         st.error("バックエンドに接続してください")
         st.stop()
 
-    cwd = st.session_state.selected_dir
+    cwd = st.session_state.active_job_cwd or st.session_state.selected_dir
     if not cwd:
         st.error("作業ディレクトリを選択してください")
         st.stop()
