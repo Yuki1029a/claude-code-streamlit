@@ -1413,7 +1413,7 @@ if st.session_state.screenshot_bytes:
                             st.rerun()
 
 # ── チャット履歴表示 ──
-for msg in st.session_state.messages:
+for _msg_idx, msg in enumerate(st.session_state.messages):
     role = msg.get("role", "assistant")
     content = msg.get("content", "")
     tool_blocks = msg.get("tool_blocks", [])
@@ -1435,7 +1435,7 @@ for msg in st.session_state.messages:
                 st.markdown(content)
 
         # ツール使用部分
-        for tool in tool_blocks:
+        for _tool_idx, tool in enumerate(tool_blocks):
             tool_name = tool.get("name", "tool")
             tool_input = tool.get("input_str", "")
             tool_result = tool.get("result", "")
@@ -1473,7 +1473,7 @@ for msg in st.session_state.messages:
                             height=200,
                             disabled=True,
                             label_visibility="collapsed",
-                            key=f"tool_result_{tool_id}_{hash(tool_result[:100])}",
+                            key=f"tool_result_{_msg_idx}_{_tool_idx}_{tool_id}",
                         )
                     else:
                         st.code(tool_result, language=None)
