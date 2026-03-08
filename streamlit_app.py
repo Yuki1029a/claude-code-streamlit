@@ -22,7 +22,7 @@ from backend_client import BackendClient
 # ─── ページ設定 ───────────────────────────────────────────
 st.set_page_config(
     page_title="CLAUDE TERMINAL v2.0",
-    page_icon="💻",
+    page_icon=">",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -32,7 +32,7 @@ st.markdown("""
 <style>
 
 /* ══════════════════════════════════════════════
-   🖥️ TERMINAL MONOCHROME THEME
+   TERMINAL MONOCHROME THEME
    Black background + White text — easy on the eyes
 ══════════════════════════════════════════════ */
 
@@ -54,13 +54,11 @@ section[data-testid="stSidebar"] {
 }
 
 section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] span,
 section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] h3,
-section[data-testid="stSidebar"] h4,
-section[data-testid="stSidebar"] div {
+section[data-testid="stSidebar"] h4 {
     color: #d0d0d0 !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
@@ -71,8 +69,8 @@ h1, h2, h3, h4, h5, h6 {
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
 
-/* テキスト全般 */
-p, span, label {
+/* テキスト全般 (span除外: アイコンフォント保護) */
+p, label {
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
 
@@ -241,7 +239,7 @@ hr {
 }
 
 /* ══════════════════════════════════════════════
-   📱 MOBILE  (≤768px)
+   MOBILE  (≤768px)
 ══════════════════════════════════════════════ */
 @media (max-width: 768px) {
     .block-container {
@@ -281,7 +279,7 @@ hr {
 }
 
 /* ══════════════════════════════════════════════
-   💻 DESKTOP  (>768px)
+   DESKTOP  (>768px)
 ══════════════════════════════════════════════ */
 @media (min-width: 769px) {
     .stChatMessage pre  { max-height: 450px; }
@@ -681,7 +679,7 @@ def process_events(events: list) -> list:
             if text:
                 messages.append({
                     "role": "system",
-                    "content": f"⚠️ {text}",
+                    "content": f"[!] {text}",
                     "tool_blocks": [],
                     "cost_info": None,
                 })
@@ -721,14 +719,14 @@ with st.sidebar:
     # ── ヘッダー ──
     if IS_MOBILE:
         # モバイル: コンパクトヘッダー
-        st.markdown("### 💻 CLAUDE TERMINAL v2.0")
+        st.markdown("### CLAUDE TERMINAL v2.0")
     else:
-        st.title("💻 CLAUDE TERMINAL v2.0")
+        st.title("CLAUDE TERMINAL v2.0")
         st.caption("█ SYSTEM READY █")
         st.divider()
 
     # ── 接続設定 ──
-    st.subheader("🔌 接続設定" if IS_MOBILE else "接続設定")
+    st.subheader("接続設定" if IS_MOBILE else "接続設定")
 
     ngrok_url = st.text_input(
         "ngrok URL",
@@ -758,10 +756,10 @@ with st.sidebar:
 
     col1, col2 = st.columns(2)
     with col1:
-        connect_label = ("🔌" if IS_MOBILE else "🔌 接続") if not st.session_state.connected else ("🔄" if IS_MOBILE else "🔄 再接続")
+        connect_label = ("接続" if IS_MOBILE else "接続") if not st.session_state.connected else ("再接続" if IS_MOBILE else "再接続")
         connect_btn = st.button(connect_label, use_container_width=True)
     with col2:
-        disconnect_label = "❌" if IS_MOBILE else "❌ 切断"
+        disconnect_label = "切断" if IS_MOBILE else "切断"
         disconnect_btn = st.button(
             disconnect_label,
             disabled=not st.session_state.connected,
@@ -776,7 +774,7 @@ with st.sidebar:
             st.error("Auth Tokenを入力してください")
         else:
             if not re.match(r"https?://.*\.(ngrok-free\.app|ngrok\.io|ngrok\.app)", ngrok_url):
-                st.warning("⚠️ ngrokドメイン以外のURLです")
+                st.warning("ngrokドメイン以外のURLです")
 
             with st.spinner("接続中..."):
                 client = BackendClient(ngrok_url)
@@ -825,9 +823,9 @@ with st.sidebar:
 
     # 接続状態バッジ
     if st.session_state.connected:
-        st.success("✅ 接続中")
+        st.success("接続中")
     else:
-        st.info("🔌 未接続")
+        st.info("未接続")
 
     st.divider()
 
@@ -838,21 +836,21 @@ with st.sidebar:
     if st.session_state.connected:
 
         MODEL_OPTIONS = {
-            "claude-sonnet-4-5": "⚡ Sonnet 4.5（速い・安い）",
-            "claude-opus-4-5":   "🧠 Opus 4.5（賢い・高い）",
-            "claude-haiku-3-5":  "🐦 Haiku 3.5（最速・最安）",
-            "claude-opus-4":     "🧠 Opus 4",
-            "claude-sonnet-4":   "⚡ Sonnet 4",
+            "claude-sonnet-4-5": "Sonnet 4.5（速い・安い）",
+            "claude-opus-4-5":   "Opus 4.5（賢い・高い）",
+            "claude-haiku-3-5":  "Haiku 3.5（最速・最安）",
+            "claude-opus-4":     "Opus 4",
+            "claude-sonnet-4":   "Sonnet 4",
         }
 
         if IS_MOBILE:
             # ─────────────────────────────────────
-            # 📱 モバイルサイドバー
+            # モバイルサイドバー
             # 情報密度を下げ、タップしやすさを優先
             # ─────────────────────────────────────
 
             # モデル + ディレクトリ を横並びキャプション付きで表示
-            st.markdown("**⚡ モデル**")
+            st.markdown("**モデル**")
             selected_model = st.selectbox(
                 "Model",
                 options=list(MODEL_OPTIONS.keys()),
@@ -865,7 +863,7 @@ with st.sidebar:
             st.session_state.selected_model = selected_model
 
             if st.session_state.flat_dirs:
-                st.markdown("**📁 作業フォルダ**")
+                st.markdown("**作業フォルダ**")
                 dir_options = st.session_state.flat_dirs
                 dir_labels = {}
                 for group_name, group_dirs in st.session_state.directories.items():
@@ -889,14 +887,14 @@ with st.sidebar:
             # ジョブ再開中の表示
             if st.session_state.active_job_cwd:
                 _ajcwd = get_path_basename(st.session_state.active_job_cwd)
-                st.caption(f"🔗 再開中: {_ajcwd}")
+                st.caption(f"再開中: {_ajcwd}")
 
             st.divider()
 
             # 大きなアクションボタン（4列）
             c1, c2, c3, c4 = st.columns(4)
             with c1:
-                if st.button("📷", use_container_width=True,
+                if st.button("撮影", use_container_width=True,
                              help="PCの画面キャプチャ",
                              disabled=st.session_state.is_streaming):
                     with st.spinner("…"):
@@ -905,7 +903,7 @@ with st.sidebar:
                             st.session_state.screenshot_bytes = img
                             st.rerun()
             with c2:
-                if st.button("🔄", use_container_width=True, help="ジョブ履歴更新"):
+                if st.button("更新", use_container_width=True, help="ジョブ履歴更新"):
                     try:
                         jobs = st.session_state.client.list_jobs()
                         st.session_state.job_history = jobs
@@ -913,7 +911,7 @@ with st.sidebar:
                     except Exception as e:
                         st.error(str(e))
             with c3:
-                if st.button("💾", use_container_width=True, help="PC履歴取得",
+                if st.button("履歴", use_container_width=True, help="PC履歴取得",
                              key="mob_pc_sessions"):
                     try:
                         with st.spinner("…"):
@@ -924,14 +922,14 @@ with st.sidebar:
                     except Exception as e:
                         st.error(f"エラー: {e}")
             with c4:
-                if st.button("🗑", use_container_width=True, help="チャット画面クリア"):
+                if st.button("CLR", use_container_width=True, help="チャット画面クリア"):
                     st.session_state.messages = []
                     st.session_state.screenshot_bytes = None
                     st.rerun()
 
             # ── モバイル: ジョブ一覧（直近5件）──
             if st.session_state.job_history:
-                st.markdown("**📋 ジョブ一覧**")
+                st.markdown("**ジョブ一覧**")
                 _m_running = [j for j in st.session_state.job_history if j.get("status") == "running"]
                 _m_others = [j for j in st.session_state.job_history if j.get("status") != "running"]
                 _m_sorted = _m_running + _m_others
@@ -943,9 +941,9 @@ with st.sidebar:
                     cwd_label = get_path_basename(job_cwd) if job_cwd else ""
                     created = job.get("created_at")
                     time_str = format_timestamp(created) if created else ""
-                    icon = {"running": "🔄", "completed": "🟢", "error": "🔴", "cancelled": "⚪"}.get(status, "❓")
+                    icon = {"running": "*", "completed": "+", "error": "!", "cancelled": "-"}.get(status, "?")
                     is_active = (job_id == st.session_state.current_job_id)
-                    marker = "▶" if is_active else ""
+                    marker = ">" if is_active else ""
                     label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
                     if st.button(label, key=f"job_{job_id}", use_container_width=True):
                         try:
@@ -968,7 +966,7 @@ with st.sidebar:
 
             # ── モバイル: PC履歴（直近8件）──
             if st.session_state.pc_sessions:
-                st.markdown("**💾 PC履歴**")
+                st.markdown("**PC履歴**")
                 for sess in st.session_state.pc_sessions[:8]:
                     sid = sess.get("session_id", "")
                     last_mod = sess.get("last_modified", 0)
@@ -980,7 +978,7 @@ with st.sidebar:
                     preview = (preview_text[:28] + "…") if len(preview_text) > 28 else preview_text
                     time_str = format_timestamp(last_mod) if last_mod else ""
                     is_current = (sid == st.session_state.session_id)
-                    label = f"{'▶' if is_current else '📜'} {time_str} {preview}"
+                    label = f"{'>' if is_current else '>'} {time_str} {preview}"
                     if st.button(label, key=f"pcsess_{sid}", use_container_width=True,
                                  help=f"{sid[:8]} | {line_count}行"):
                         try:
@@ -996,11 +994,11 @@ with st.sidebar:
             elif st.session_state.pc_sessions_loaded:
                 st.caption("セッションなし")
             else:
-                st.caption("💾 で履歴取得")
+                st.caption("ボタンで履歴取得")
 
         else:
             # ─────────────────────────────────────
-            # 💻 デスクトップサイドバー
+            # デスクトップサイドバー
             # 情報を豊富に、ラベル付きで表示
             # ─────────────────────────────────────
 
@@ -1025,7 +1023,7 @@ with st.sidebar:
                 for group_name, group_dirs in st.session_state.directories.items():
                     group_base = get_path_basename(group_name)
                     for d in group_dirs:
-                        dir_labels[d] = f"📁 {group_base}/{get_path_basename(d)}"
+                        dir_labels[d] = f"{group_base}/{get_path_basename(d)}"
                 selected = st.selectbox(
                     "CWD",
                     options=dir_options,
@@ -1043,8 +1041,8 @@ with st.sidebar:
             # ── ジョブ再開中の表示 ──
             if st.session_state.active_job_cwd:
                 _ajcwd = get_path_basename(st.session_state.active_job_cwd)
-                st.info(f"🔗 再開中: **{_ajcwd}**")
-                if st.button("🆕 新規ジョブに切替", use_container_width=True):
+                st.info(f"再開中: **{_ajcwd}**")
+                if st.button("新規ジョブに切替", use_container_width=True):
                     st.session_state.active_job_cwd = None
                     st.session_state.session_id = None
                     st.session_state.messages = []
@@ -1066,9 +1064,9 @@ with st.sidebar:
                     cwd_label = get_path_basename(job_cwd) if job_cwd else ""
                     created = job.get("created_at")
                     time_str = format_timestamp(created) if created else ""
-                    icon = {"running": "🔄", "completed": "🟢", "error": "🔴", "cancelled": "⚪"}.get(status, "❓")
+                    icon = {"running": "*", "completed": "+", "error": "!", "cancelled": "-"}.get(status, "?")
                     is_active = (job_id == st.session_state.current_job_id)
-                    marker = "▶ " if is_active else ""
+                    marker = "> " if is_active else ""
                     label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
                     if st.button(label, key=f"job_{job_id}", use_container_width=True):
                         try:
@@ -1094,7 +1092,7 @@ with st.sidebar:
             st.divider()
             col_ss, col_ref = st.columns(2)
             with col_ss:
-                if st.button("📷 画面", use_container_width=True,
+                if st.button("撮影", use_container_width=True,
                              disabled=st.session_state.is_streaming):
                     with st.spinner("キャプチャ中..."):
                         img = st.session_state.client.get_screenshot()
@@ -1104,7 +1102,7 @@ with st.sidebar:
                         else:
                             st.error("失敗しました")
             with col_ref:
-                if st.button("🔄 履歴", use_container_width=True):
+                if st.button("履歴更新", use_container_width=True):
                     try:
                         jobs = st.session_state.client.list_jobs()
                         st.session_state.job_history = jobs
@@ -1116,9 +1114,9 @@ with st.sidebar:
             st.divider()
             col_pc_title, col_pc_btn = st.columns([3, 1])
             with col_pc_title:
-                st.subheader("💾 PC履歴")
+                st.subheader("PC履歴")
             with col_pc_btn:
-                if st.button("🔄", key="load_pc_sessions",
+                if st.button("再接続", key="load_pc_sessions",
                              help="PCのClaude会話履歴を取得"):
                     try:
                         with st.spinner("読み込み中..."):
@@ -1141,7 +1139,7 @@ with st.sidebar:
                     preview = (preview_text[:38] + "…") if len(preview_text) > 38 else preview_text
                     time_str = format_timestamp(last_mod) if last_mod else ""
                     is_current = (sid == st.session_state.session_id)
-                    label = f"{'▶ ' if is_current else ''}{time_str} {preview}"
+                    label = f"{'> ' if is_current else ''}{time_str} {preview}"
                     if st.button(label, key=f"pcsess_{sid}", use_container_width=True,
                                  help=f"Session: {sid[:8]}…\n{line_count}行 | {project[-30:]}"):
                         try:
@@ -1157,11 +1155,11 @@ with st.sidebar:
             elif st.session_state.pc_sessions_loaded:
                 st.caption("セッションが見つかりません")
             else:
-                st.caption("🔄 ボタンで一覧を取得")
+                st.caption("ボタンで一覧を取得")
 
             # ── 修正リクエスト ──
             st.divider()
-            st.subheader("🔧 修正リクエスト")
+            st.subheader("修正リクエスト")
             st.caption("エラーや不具合をPC側のClaude Codeに送信して修正を依頼")
             fix_request = st.text_area(
                 "修正内容",
@@ -1171,7 +1169,7 @@ with st.sidebar:
                 key="fix_request_text",
             )
             fix_use_chrome = st.checkbox("Chromeで視覚確認を含める", value=True, key="fix_chrome")
-            if st.button("📤 修正リクエスト送信", use_container_width=True,
+            if st.button("修正リクエスト送信", use_container_width=True,
                          disabled=st.session_state.is_streaming or not fix_request):
                 # 修正プロンプトを構築
                 fix_prompt = f"以下の修正を行ってください:\n\n{fix_request}"
@@ -1182,7 +1180,7 @@ with st.sidebar:
                 if cwd:
                     st.session_state.messages.append({
                         "role": "user",
-                        "content": f"🔧 修正リクエスト: {fix_request}",
+                        "content": f"修正リクエスト: {fix_request}",
                         "tool_blocks": [],
                         "cost_info": None,
                     })
@@ -1207,7 +1205,7 @@ with st.sidebar:
         # ── モバイル: 修正リクエスト（コンパクト版）──
         if IS_MOBILE:
             st.divider()
-            st.markdown("**🔧 修正リクエスト**")
+            st.markdown("**修正リクエスト**")
             fix_request_m = st.text_area(
                 "修正内容",
                 placeholder="エラー内容や修正依頼を入力",
@@ -1215,7 +1213,7 @@ with st.sidebar:
                 label_visibility="collapsed",
                 key="fix_request_mobile",
             )
-            if st.button("📤 送信", use_container_width=True,
+            if st.button("送信", use_container_width=True,
                          disabled=st.session_state.is_streaming or not fix_request_m,
                          key="fix_send_mobile"):
                 fix_prompt = f"以下の修正を行ってください:\n\n{fix_request_m}\n\n修正後はChromeブラウザで動作を視覚的に確認してください。"
@@ -1223,7 +1221,7 @@ with st.sidebar:
                 if cwd:
                     st.session_state.messages.append({
                         "role": "user",
-                        "content": f"🔧 修正リクエスト: {fix_request_m}",
+                        "content": f"修正リクエスト: {fix_request_m}",
                         "tool_blocks": [],
                         "cost_info": None,
                     })
@@ -1253,14 +1251,14 @@ if not st.session_state.connected:
     if IS_MOBILE:
         # モバイル: コンパクトな案内
         st.markdown("""
-        ## 🤖 Claude Code Remote
+        ## Claude Code Remote
         ### セットアップ
-        1. ← サイドバー（☰）を開く
+        1. ← サイドバー（menu）を開く
         2. **ngrok URL** と **Auth Token** を入力
-        3. **🔌** ボタンをタップ
+        3. 接続ボタンをタップ
         """)
     else:
-        st.title("💻 CLAUDE TERMINAL v2.0")
+        st.title("CLAUDE TERMINAL v2.0")
         st.markdown("""
         ### セットアップ手順
 
@@ -1268,7 +1266,7 @@ if not st.session_state.connected:
         2. サイドバーに **ngrok URL** と **Auth Token** を入力
         3. **接続** ボタンをクリック
 
-        > ℹ️ Streamlit Cloud経由でFlask APIにアクセスするため、
+        > Streamlit Cloud経由でFlask APIにアクセスするため、
         > ngrokドメインがブロックされるネットワークでも利用可能です。
         """)
     st.stop()
@@ -1277,33 +1275,33 @@ if not st.session_state.connected:
 if st.session_state.screenshot_bytes:
     if IS_MOBILE:
         # モバイル: フル幅表示 + 閉じる/更新ボタンを下に配置
-        with st.expander("🖥️ PC画面", expanded=True):
+        with st.expander("PC画面", expanded=True):
             st.image(st.session_state.screenshot_bytes,
                      use_container_width=True)
             mc1, mc2 = st.columns(2)
             with mc1:
-                if st.button("✕ 閉じる", key="close_screenshot", use_container_width=True):
+                if st.button("閉じる", key="close_screenshot", use_container_width=True):
                     st.session_state.screenshot_bytes = None
                     st.rerun()
             with mc2:
-                if st.button("🔄 更新", key="refresh_screenshot", use_container_width=True):
+                if st.button("更新", key="refresh_screenshot", use_container_width=True):
                     with st.spinner("更新中..."):
                         img = st.session_state.client.get_screenshot()
                         if img:
                             st.session_state.screenshot_bytes = img
                             st.rerun()
     else:
-        with st.expander("🖥️ PC画面キャプチャ", expanded=True):
+        with st.expander("PC画面キャプチャ", expanded=True):
             col_img, col_btn = st.columns([6, 1])
             with col_img:
                 st.image(st.session_state.screenshot_bytes,
                          caption="最新のスクリーンショット",
                          use_container_width=True)
             with col_btn:
-                if st.button("✕ 閉じる", key="close_screenshot"):
+                if st.button("閉じる", key="close_screenshot"):
                     st.session_state.screenshot_bytes = None
                     st.rerun()
-                if st.button("🔄 更新", key="refresh_screenshot"):
+                if st.button("更新", key="refresh_screenshot"):
                     with st.spinner("更新中..."):
                         img = st.session_state.client.get_screenshot()
                         if img:
@@ -1340,7 +1338,7 @@ for msg in st.session_state.messages:
             tool_result = tool.get("result", "")
             file_path = extract_file_path(tool_input)
 
-            with st.expander(f"🔧 {tool_name}", expanded=False):
+            with st.expander(f"> {tool_name}", expanded=False):
                 # ツール入力
                 if tool_input:
                     formatted = parse_tool_input_display(tool_input)
@@ -1350,7 +1348,7 @@ for msg in st.session_state.messages:
                 if file_path:
                     fname = get_path_basename(file_path)
                     if is_image_path(file_path):
-                        st.markdown(f"📷 **{fname}**")
+                        st.markdown(f"**{fname}**")
                         # 画像表示を試みる
                         try:
                             img_bytes, mime = st.session_state.client.get_file_bytes(file_path)
@@ -1359,7 +1357,7 @@ for msg in st.session_state.messages:
                         except Exception:
                             st.caption(f"画像の読み込みに失敗: {file_path}")
                     else:
-                        st.markdown(f"📄 **{fname}**")
+                        st.markdown(f"**{fname}**")
 
                 # ツール結果
                 if tool_result:
@@ -1387,7 +1385,7 @@ for msg in st.session_state.messages:
 
 # ── ストリーミング中のキャンセルボタン ──
 if st.session_state.is_streaming:
-    if st.button("🛑 キャンセル", type="primary", use_container_width=True):
+    if st.button("キャンセル", type="primary", use_container_width=True):
         st.session_state.cancel_requested = True
         if st.session_state.current_job_id and st.session_state.client:
             try:
@@ -1418,14 +1416,14 @@ if (st.session_state.connected
         _rjob_id = _recovery_target.get("job_id")
         _rjob_status = _recovery_target.get("status")
         _rjob_prompt = _recovery_target.get("prompt", "")[:80]
-        _rjob_label = "🔄 実行中" if _rjob_status == "running" else "✅ 完了"
+        _rjob_label = "実行中" if _rjob_status == "running" else "完了"
         st.info(f"{_rjob_label}のジョブを検出: 「{_rjob_prompt}...」")
 
         col_r1, col_r2 = st.columns(2)
         with col_r1:
-            _do_recover = st.button("📥 結果を復帰", type="primary", use_container_width=True)
+            _do_recover = st.button("結果を復帰", type="primary", use_container_width=True)
         with col_r2:
-            _skip_recover = st.button("⏭️ スキップ", use_container_width=True)
+            _skip_recover = st.button("スキップ", use_container_width=True)
 
         if _do_recover:
             try:
@@ -1542,7 +1540,7 @@ if prompt or _recovery_streaming:
         with st.chat_message("user"):
             st.markdown(f"> {prompt}")
     elif _recovery_streaming:
-        st.info("🔄 実行中のジョブに再接続しました")
+        st.info("実行中のジョブに再接続しました")
 
     streaming_container = st.chat_message("assistant")
     status_placeholder = st.empty()
@@ -1575,7 +1573,7 @@ if prompt or _recovery_streaming:
 
             if not batch:
                 time.sleep(0.3)
-                status_placeholder.caption("⏳ 応答待機中...")
+                status_placeholder.caption("応答待機中...")
                 continue
 
             for ev in batch:
@@ -1615,7 +1613,7 @@ if prompt or _recovery_streaming:
                                 "input_str": "",
                                 "result": "",
                             }
-                            status_placeholder.caption(f"🔧 {cb.get('name', 'tool')}...")
+                            status_placeholder.caption(f"{cb.get('name', 'tool')}...")
 
                     elif inner_type == "content_block_delta":
                         delta = inner.get("delta", {})
@@ -1652,7 +1650,7 @@ if prompt or _recovery_streaming:
                                 accumulated_tools.append(pending_tool)
                                 # ツール表示
                                 with tool_container.expander(
-                                    f"🔧 {pending_tool['name']}", expanded=False
+                                    f"{pending_tool['name']}", expanded=False
                                 ):
                                     if pending_tool["input_str"]:
                                         st.code(
@@ -1663,7 +1661,7 @@ if prompt or _recovery_streaming:
                                     if fp:
                                         fname = get_path_basename(fp)
                                         if is_image_path(fp):
-                                            st.markdown(f"📷 **{fname}**")
+                                            st.markdown(f"**{fname}**")
                                             try:
                                                 img_bytes, mime = st.session_state.client.get_file_bytes(fp)
                                                 if img_bytes:
@@ -1671,7 +1669,7 @@ if prompt or _recovery_streaming:
                                             except Exception:
                                                 pass
                                         else:
-                                            st.markdown(f"📄 **{fname}**")
+                                            st.markdown(f"**{fname}**")
                                     if content:
                                         if len(content) > 500:
                                             st.text_area(
@@ -1707,7 +1705,7 @@ if prompt or _recovery_streaming:
                     if text:
                         accumulated_errors.append(text)
                         streaming_container.markdown(
-                            f'<div class="error-msg">⚠️ {text}</div>',
+                            f'<div class="error-msg">[!] {text}</div>',
                             unsafe_allow_html=True,
                         )
 
@@ -1734,7 +1732,7 @@ if prompt or _recovery_streaming:
 
         # エラーがあればテキストに含める
         if accumulated_errors:
-            error_text = "\n".join(f"⚠️ {e}" for e in accumulated_errors)
+            error_text = "\n".join(f"[!] {e}" for e in accumulated_errors)
             if accumulated_text:
                 accumulated_text += "\n\n" + error_text
             else:
