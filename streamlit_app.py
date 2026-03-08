@@ -234,6 +234,25 @@ textarea {
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
 
+/* パスワード入力の目アイコン周辺 — 紺色除去 */
+div[data-baseweb="input"],
+div[data-baseweb="input"] > div,
+div[data-baseweb="base-input"],
+div[data-baseweb="base-input"] > div,
+.stTextInput > div,
+.stTextInput > div > div {
+    background-color: #111111 !important;
+    background: #111111 !important;
+    border-color: #444 !important;
+}
+
+div[data-baseweb="input"] button,
+div[data-baseweb="base-input"] button {
+    background-color: #111111 !important;
+    background: #111111 !important;
+    color: #e0e0e0 !important;
+}
+
 /* セレクトボックス */
 div[data-baseweb="select"] {
     background-color: #111111 !important;
