@@ -1426,8 +1426,7 @@ for msg in st.session_state.messages:
         )
         continue
 
-    _avatar = ">" if role == "user" else "$"
-    with st.chat_message(role, avatar=_avatar):
+    with st.chat_message(role):
         # テキスト部分
         if content:
             if role == "user":
@@ -1641,12 +1640,12 @@ if prompt or _recovery_streaming:
 
     # ストリーミング中の表示エリア
     if prompt:
-        with st.chat_message("user", avatar=">"):
+        with st.chat_message("user"):
             st.markdown(f"> {prompt}")
     elif _recovery_streaming:
         st.info("実行中のジョブに再接続しました")
 
-    streaming_container = st.chat_message("assistant", avatar="$")
+    streaming_container = st.chat_message("assistant")
     status_placeholder = st.empty()
     text_placeholder = streaming_container.empty()
     tool_container = streaming_container.container()
