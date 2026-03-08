@@ -32,193 +32,212 @@ st.markdown("""
 <style>
 
 /* ══════════════════════════════════════════════
-   🖥️ TERMINAL HACKER THEME
-   Black background + Green text (#00ff00)
+   🖥️ TERMINAL MONOCHROME THEME
+   Black background + White text — easy on the eyes
 ══════════════════════════════════════════════ */
 
-/* メインアプリ背景 - 真っ黒 */
+/* メインアプリ背景 */
 .stApp {
-    background-color: #000000 !important;
+    background-color: #0a0a0a !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
-    color: #00ff00 !important;
+    color: #e0e0e0 !important;
 }
 
-/* メインコンテンツエリア */
 .main {
-    background-color: #000000 !important;
+    background-color: #0a0a0a !important;
 }
 
 /* サイドバー */
 section[data-testid="stSidebar"] {
-    background-color: #000000 !important;
-    border-right: 1px solid #00ff00 !important;
+    background-color: #0f0f0f !important;
+    border-right: 1px solid #333 !important;
 }
 
-section[data-testid="stSidebar"] * {
-    color: #00ff00 !important;
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3,
+section[data-testid="stSidebar"] h4,
+section[data-testid="stSidebar"] div {
+    color: #d0d0d0 !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
 
 /* タイトル・見出し */
 h1, h2, h3, h4, h5, h6 {
-    color: #00ff00 !important;
+    color: #ffffff !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
-    text-shadow: 0 0 5px #00ff00;
 }
 
 /* テキスト全般 */
-p, span, div, label {
-    color: #00ff00 !important;
+p, span, label {
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
 
-/* チャットメッセージ - ターミナル風 */
+/* チャットメッセージ */
 .stChatMessage {
-    background-color: #000000 !important;
-    border: 1px solid #00ff00 !important;
-    border-radius: 0px !important;
-    color: #00ff00 !important;
-    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+    background-color: #111111 !important;
+    border: 1px solid #333 !important;
+    border-radius: 2px !important;
     padding: 10px !important;
     margin-bottom: 10px !important;
 }
 
 .stChatMessage p {
-    color: #00ff00 !important;
+    color: #e0e0e0 !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
 
 /* コードブロック */
 .stChatMessage pre {
-    background: #000000 !important;
-    border: 1px solid #00ff00 !important;
-    border-radius: 0px !important;
+    background: #0a0a0a !important;
+    border: 1px solid #333 !important;
+    border-radius: 2px !important;
     padding: 12px !important;
-    color: #00ff00 !important;
+    color: #e0e0e0 !important;
     overflow-x: auto;
     overflow-y: auto;
 }
 
 .stChatMessage code {
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
-    color: #00ff00 !important;
-    background: #000000 !important;
+    color: #e0e0e0 !important;
+    background: #0a0a0a !important;
 }
 
 /* チャット入力欄 */
 .stChatInputContainer {
-    background-color: #000000 !important;
-    border: 1px solid #00ff00 !important;
+    background-color: #111111 !important;
+    border: 1px solid #444 !important;
 }
 
 .stChatInputContainer textarea {
-    background-color: #000000 !important;
-    color: #00ff00 !important;
+    background-color: #111111 !important;
+    color: #e0e0e0 !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
     border: none !important;
 }
 
-/* ボタン */
+/* ボタン（全般） */
 .stButton > button {
-    background-color: #000000 !important;
-    color: #00ff00 !important;
-    border: 1px solid #00ff00 !important;
-    border-radius: 0px !important;
+    background-color: #1a1a1a !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #555 !important;
+    border-radius: 3px !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
     padding: 8px 16px !important;
 }
 
 .stButton > button:hover {
-    background-color: #00ff00 !important;
-    color: #000000 !important;
-    border: 1px solid #00ff00 !important;
+    background-color: #333 !important;
+    color: #ffffff !important;
+    border: 1px solid #888 !important;
+}
+
+/* サイドバー内ボタン — 明示的に上書き */
+section[data-testid="stSidebar"] .stButton > button {
+    background-color: #1a1a1a !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #555 !important;
+    border-radius: 3px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 38px !important;
+    cursor: pointer !important;
+}
+
+section[data-testid="stSidebar"] .stButton > button:hover {
+    background-color: #333 !important;
+    color: #fff !important;
+    border-color: #888 !important;
 }
 
 /* 入力フィールド */
 input[type="text"],
 input[type="password"],
 textarea {
-    background-color: #000000 !important;
-    color: #00ff00 !important;
-    border: 1px solid #00ff00 !important;
+    background-color: #111111 !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #444 !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
 
 /* セレクトボックス */
 div[data-baseweb="select"] {
-    background-color: #000000 !important;
-    border: 1px solid #00ff00 !important;
+    background-color: #111111 !important;
+    border: 1px solid #444 !important;
 }
 
 div[data-baseweb="select"] * {
-    background-color: #000000 !important;
-    color: #00ff00 !important;
+    background-color: #111111 !important;
+    color: #e0e0e0 !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
 
 /* エキスパンダー */
 .streamlit-expanderHeader {
-    background-color: #000000 !important;
-    color: #00ff00 !important;
-    border: 1px solid #00ff00 !important;
+    background-color: #111111 !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #333 !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
 
 /* コスト表示 */
 .cost-info {
     font-size: 11px;
-    color: #00ff00 !important;
+    color: #888 !important;
     text-align: center;
     margin: 4px 0;
-    opacity: 0.7;
 }
 
-/* エラーメッセージ - 赤色で */
+/* エラーメッセージ */
 .error-msg {
-    color: #ff0000 !important;
-    background: rgba(255,0,0,0.1) !important;
-    border: 1px solid #ff0000 !important;
-    border-radius: 0px !important;
+    color: #ff6b6b !important;
+    background: rgba(255,0,0,0.08) !important;
+    border: 1px solid #ff6b6b !important;
+    border-radius: 2px !important;
     padding: 8px;
     margin: 4px 0;
 }
 
 /* ステータスバッジ */
-.status-running  { color: #ffff00 !important; }
-.status-completed{ color: #00ff00 !important; }
-.status-error    { color: #ff0000 !important; }
-.status-cancelled{ color: #888888 !important; }
+.status-running  { color: #ffcc00 !important; }
+.status-completed{ color: #88ff88 !important; }
+.status-error    { color: #ff6b6b !important; }
+.status-cancelled{ color: #666 !important; }
 
 /* ツールカード左ボーダー */
 .tool-expander {
-    border-left: 3px solid #00ff00 !important;
+    border-left: 3px solid #555 !important;
     padding-left: 8px;
     margin: 4px 0;
 }
 
 /* テキストエリア */
 .stTextArea textarea {
-    background-color: #000000 !important;
-    color: #00ff00 !important;
-    border: 1px solid #00ff00 !important;
+    background-color: #111111 !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #444 !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
 
 /* 画像 */
 .stImage img {
-    border: 1px solid #00ff00 !important;
+    border: 1px solid #333 !important;
 }
 
 /* divider */
 hr {
-    border-color: #00ff00 !important;
-    opacity: 0.3 !important;
+    border-color: #333 !important;
+    opacity: 0.5 !important;
 }
 
 /* キャプション */
 .stCaption {
-    color: #00ff00 !important;
-    opacity: 0.7;
+    color: #888 !important;
 }
 
 /* ══════════════════════════════════════════════
