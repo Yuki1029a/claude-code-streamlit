@@ -47,6 +47,22 @@ st.markdown("""
     background-color: #0a0a0a !important;
 }
 
+/* ヘッダーバー（上部） — 黒に統一 */
+header[data-testid="stHeader"],
+.stAppHeader,
+header {
+    background-color: #0a0a0a !important;
+    background: #0a0a0a !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
+}
+
+/* デプロイバー */
+.stDeployButton,
+[data-testid="stStatusWidget"] {
+    background-color: transparent !important;
+}
+
 /* サイドバー */
 section[data-testid="stSidebar"] {
     background-color: #0f0f0f !important;
@@ -120,30 +136,50 @@ p, label {
     background: #0a0a0a !important;
 }
 
-/* チャット入力欄 — 背景を黒に完全統一 */
+/* チャット入力欄 — 全て黒、入力枠のみ白 */
 .stChatInputContainer,
 .stChatInput,
 div[data-testid="stChatInput"],
 div[data-testid="stBottom"],
 div[data-testid="stBottom"] > div,
-.stBottom {
+div[data-testid="stBottom"] > div > div,
+div[data-testid="stBottom"] *,
+.stBottom,
+.stBottom > div {
     background-color: #0a0a0a !important;
-    border: none !important;
+    background: #0a0a0a !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
 }
 
-.stChatInputContainer textarea {
-    background-color: #111111 !important;
+/* 入力テキストエリアだけ白枠 */
+.stChatInputContainer textarea,
+div[data-testid="stChatInput"] textarea {
+    background-color: #0a0a0a !important;
     color: #e0e0e0 !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
-    border: 1px solid #333 !important;
+    border: 1px solid #ffffff !important;
     border-radius: 2px !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* フォーカス時も白枠維持 */
+.stChatInputContainer textarea:focus,
+div[data-testid="stChatInput"] textarea:focus {
+    border: 1px solid #ffffff !important;
+    box-shadow: none !important;
+    outline: none !important;
 }
 
 /* 送信ボタン */
-.stChatInputContainer button {
+.stChatInputContainer button,
+div[data-testid="stChatInput"] button {
     background-color: #0a0a0a !important;
+    background: #0a0a0a !important;
     color: #e0e0e0 !important;
     border: none !important;
+    box-shadow: none !important;
 }
 
 /* ボタン（全般） */
