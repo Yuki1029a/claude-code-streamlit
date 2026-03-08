@@ -152,22 +152,29 @@ div[data-testid="stBottom"] *,
     box-shadow: none !important;
 }
 
-/* 入力テキストエリアだけ白枠 */
+/* 入力エリア上部に白セパレータ線 */
+.stChatInputContainer,
+div[data-testid="stChatInput"] > div:first-child {
+    border-top: 1px solid #555 !important;
+    padding-top: 12px !important;
+}
+
+/* 入力テキストエリア — ボーダーなし、黒背景 */
 .stChatInputContainer textarea,
 div[data-testid="stChatInput"] textarea {
     background-color: #0a0a0a !important;
     color: #e0e0e0 !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
-    border: 1px solid #ffffff !important;
-    border-radius: 2px !important;
+    border: none !important;
+    border-radius: 0 !important;
     box-shadow: none !important;
     outline: none !important;
 }
 
-/* フォーカス時も白枠維持 */
+/* フォーカス時もボーダーなし */
 .stChatInputContainer textarea:focus,
 div[data-testid="stChatInput"] textarea:focus {
-    border: 1px solid #ffffff !important;
+    border: none !important;
     box-shadow: none !important;
     outline: none !important;
 }
