@@ -76,16 +76,31 @@ p, label {
 
 /* チャットメッセージ */
 .stChatMessage {
-    background-color: #111111 !important;
-    border: 1px solid #333 !important;
-    border-radius: 2px !important;
-    padding: 10px !important;
-    margin-bottom: 10px !important;
+    background-color: #0a0a0a !important;
+    border: none !important;
+    border-bottom: 1px solid #1a1a1a !important;
+    border-radius: 0 !important;
+    padding: 12px 8px !important;
+    margin-bottom: 0 !important;
 }
 
 .stChatMessage p {
     color: #e0e0e0 !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+}
+
+/* アバター — 記号をシンプルに表示 */
+.stChatMessage [data-testid="stChatMessageAvatarUser"],
+.stChatMessage [data-testid="stChatMessageAvatarAssistant"] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #666 !important;
+    font-family: 'Courier New', monospace !important;
+    font-size: 16px !important;
+    min-width: 20px !important;
+    width: 20px !important;
+    height: 20px !important;
 }
 
 /* コードブロック */
@@ -105,16 +120,29 @@ p, label {
     background: #0a0a0a !important;
 }
 
-/* チャット入力欄 */
-.stChatInputContainer {
-    background-color: #111111 !important;
-    border: 1px solid #444 !important;
+/* チャット入力欄 — 背景を黒に完全統一 */
+.stChatInputContainer,
+.stChatInput,
+div[data-testid="stChatInput"],
+div[data-testid="stBottom"],
+div[data-testid="stBottom"] > div,
+.stBottom {
+    background-color: #0a0a0a !important;
+    border: none !important;
 }
 
 .stChatInputContainer textarea {
     background-color: #111111 !important;
     color: #e0e0e0 !important;
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+    border: 1px solid #333 !important;
+    border-radius: 2px !important;
+}
+
+/* 送信ボタン */
+.stChatInputContainer button {
+    background-color: #0a0a0a !important;
+    color: #e0e0e0 !important;
     border: none !important;
 }
 
@@ -264,7 +292,7 @@ hr {
 
     .stChatMessage {
         padding: 6px 8px !important;
-        margin-bottom: 6px !important;
+        margin-bottom: 0 !important;
     }
 
     .stChatMessage pre {
@@ -1322,10 +1350,10 @@ for msg in st.session_state.messages:
         )
         continue
 
-    with st.chat_message("assistant" if role == "assistant" else "user"):
+    _avatar = ">" if role == "user" else "$"
+    with st.chat_message(role, avatar=_avatar):
         # テキスト部分
         if content:
-            # ユーザー入力には「> 」プレフィックスを付ける (ターミナル風)
             if role == "user":
                 st.markdown(f"> {content}")
             else:
@@ -1537,12 +1565,12 @@ if prompt or _recovery_streaming:
 
     # ストリーミング中の表示エリア
     if prompt:
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar=">"):
             st.markdown(f"> {prompt}")
     elif _recovery_streaming:
         st.info("実行中のジョブに再接続しました")
 
-    streaming_container = st.chat_message("assistant")
+    streaming_container = st.chat_message("assistant", avatar="$")
     status_placeholder = st.empty()
     text_placeholder = streaming_container.empty()
     tool_container = streaming_container.container()
