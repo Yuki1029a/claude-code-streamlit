@@ -234,16 +234,22 @@ textarea {
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
 }
 
-/* パスワード入力の目アイコン周辺 — 紺色除去 */
+/* 入力コンテナ全体（目アイコン含む） — 背景統一 */
 div[data-baseweb="input"],
+div[data-baseweb="base-input"] {
+    background-color: #111111 !important;
+    background: #111111 !important;
+    border: 1px solid #444 !important;
+    border-radius: 2px !important;
+}
+
 div[data-baseweb="input"] > div,
-div[data-baseweb="base-input"],
 div[data-baseweb="base-input"] > div,
 .stTextInput > div,
 .stTextInput > div > div {
     background-color: #111111 !important;
     background: #111111 !important;
-    border-color: #444 !important;
+    border: none !important;
 }
 
 div[data-baseweb="input"] button,
@@ -251,6 +257,14 @@ div[data-baseweb="base-input"] button {
     background-color: #111111 !important;
     background: #111111 !important;
     color: #e0e0e0 !important;
+    border: none !important;
+}
+
+/* 内側inputのボーダーを消す（外枠に任せる） */
+div[data-baseweb="input"] input,
+div[data-baseweb="base-input"] input {
+    border: none !important;
+    background: transparent !important;
 }
 
 /* セレクトボックス */
