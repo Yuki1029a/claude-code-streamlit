@@ -410,7 +410,7 @@ def init_state():
         "is_streaming": False,
         "cancel_requested": False,
         "job_history": [],
-        "selected_model": "claude-sonnet-4-5",  # デフォルトモデル
+        "selected_model": "claude-sonnet-4-6",  # デフォルトモデル
         "screenshot_bytes": None,               # 最新スクリーンショット
         "pc_sessions": [],                      # PCのClaude履歴セッション一覧
         "pc_sessions_loaded": False,            # 一覧取得済みフラグ
@@ -940,9 +940,11 @@ with st.sidebar:
     if st.session_state.connected:
 
         MODEL_OPTIONS = {
-            "claude-sonnet-4-5": "Sonnet 4.5（速い・安い）",
-            "claude-opus-4-5":   "Opus 4.5（賢い・高い）",
-            "claude-haiku-3-5":  "Haiku 3.5（最速・最安）",
+            "claude-opus-4-6":   "Opus 4.6",
+            "claude-sonnet-4-6": "Sonnet 4.6",
+            "claude-sonnet-4-5": "Sonnet 4.5",
+            "claude-opus-4-5":   "Opus 4.5",
+            "claude-haiku-4-5":  "Haiku 4.5",
             "claude-opus-4":     "Opus 4",
             "claude-sonnet-4":   "Sonnet 4",
         }
