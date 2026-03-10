@@ -968,32 +968,38 @@ with st.sidebar:
             )
             st.session_state.selected_model = selected_model
 
-            if st.session_state.flat_dirs:
-                st.markdown("**作業フォルダ**")
-                dir_options = st.session_state.flat_dirs
-                dir_labels = {}
-                for group_name, group_dirs in st.session_state.directories.items():
-                    group_base = get_path_basename(group_name)
-                    for d in group_dirs:
-                        dir_labels[d] = f"{group_base}/{get_path_basename(d)}"
-                selected = st.selectbox(
-                    "CWD",
-                    options=dir_options,
-                    format_func=lambda x: dir_labels.get(x, get_path_basename(x)),
-                    index=dir_options.index(st.session_state.selected_dir)
-                    if st.session_state.selected_dir in dir_options else 0,
-                    label_visibility="collapsed",
-                )
-                # ディレクトリ手動変更 → ジョブ再開状態をリセット
-                if selected != st.session_state.selected_dir:
+            # ── 新規セッション / セッション状態 ──
+            _has_active_session = bool(st.session_state.active_job_cwd or st.session_state.session_id)
+            if _has_active_session:
+                _active_cwd = st.session_state.active_job_cwd or st.session_state.selected_dir
+                _active_label = get_path_basename(_active_cwd) if _active_cwd else "不明"
+                st.caption(f"セッション中: {_active_label}")
+                if st.button("新規セッション", use_container_width=True, key="mob_new_session"):
                     st.session_state.active_job_cwd = None
                     st.session_state.session_id = None
-                st.session_state.selected_dir = selected
-
-            # ジョブ再開中の表示
-            if st.session_state.active_job_cwd:
-                _ajcwd = get_path_basename(st.session_state.active_job_cwd)
-                st.caption(f"再開中: {_ajcwd}")
+                    st.session_state.messages = []
+                    st.session_state.current_job_id = None
+                    st.session_state.screenshot_bytes = None
+                    st.rerun()
+            else:
+                # 新規セッション: フォルダ選択可能
+                if st.session_state.flat_dirs:
+                    st.markdown("**作業フォルダ**")
+                    dir_options = st.session_state.flat_dirs
+                    dir_labels = {}
+                    for group_name, group_dirs in st.session_state.directories.items():
+                        group_base = get_path_basename(group_name)
+                        for d in group_dirs:
+                            dir_labels[d] = f"{group_base}/{get_path_basename(d)}"
+                    selected = st.selectbox(
+                        "CWD",
+                        options=dir_options,
+                        format_func=lambda x: dir_labels.get(x, get_path_basename(x)),
+                        index=dir_options.index(st.session_state.selected_dir)
+                        if st.session_state.selected_dir in dir_options else 0,
+                        label_visibility="collapsed",
+                    )
+                    st.session_state.selected_dir = selected
 
             st.divider()
 
@@ -1094,6 +1100,12 @@ with st.sidebar:
                             st.session_state.messages = process_native_events(events)
                             add_session(sid)
                             st.session_state.session_id = sid
+                            # cwdを復帰（サーバーから取得 or セッション一覧から取得）
+                            _pcwd = data.get("cwd") or sess.get("cwd")
+                            if _pcwd:
+                                st.session_state.active_job_cwd = _pcwd
+                                if _pcwd in st.session_state.flat_dirs:
+                                    st.session_state.selected_dir = _pcwd
                             st.rerun()
                         except Exception as e:
                             st.error(f"エラー: {e}")
@@ -1121,38 +1133,40 @@ with st.sidebar:
             )
             st.session_state.selected_model = selected_model
 
-            # ── 作業ディレクトリ ──
-            if st.session_state.flat_dirs:
-                st.subheader("作業ディレクトリ")
-                dir_options = st.session_state.flat_dirs
-                dir_labels = {}
-                for group_name, group_dirs in st.session_state.directories.items():
-                    group_base = get_path_basename(group_name)
-                    for d in group_dirs:
-                        dir_labels[d] = f"{group_base}/{get_path_basename(d)}"
-                selected = st.selectbox(
-                    "CWD",
-                    options=dir_options,
-                    format_func=lambda x: dir_labels.get(x, get_path_basename(x)),
-                    index=dir_options.index(st.session_state.selected_dir)
-                    if st.session_state.selected_dir in dir_options else 0,
-                    label_visibility="collapsed",
-                )
-                # ディレクトリ手動変更 → ジョブ再開状態をリセット
-                if selected != st.session_state.selected_dir:
-                    st.session_state.active_job_cwd = None
-                    st.session_state.session_id = None
-                st.session_state.selected_dir = selected
-
-            # ── ジョブ再開中の表示 ──
-            if st.session_state.active_job_cwd:
-                _ajcwd = get_path_basename(st.session_state.active_job_cwd)
-                st.info(f"再開中: **{_ajcwd}**")
-                if st.button("新規ジョブに切替", use_container_width=True):
+            # ── 作業ディレクトリ / セッション状態 ──
+            _has_active_session = bool(st.session_state.active_job_cwd or st.session_state.session_id)
+            if _has_active_session:
+                # セッション中: ディレクトリは固定表示（変更不可）
+                _active_cwd = st.session_state.active_job_cwd or st.session_state.selected_dir
+                _active_label = get_path_basename(_active_cwd) if _active_cwd else "不明"
+                st.subheader("セッション中")
+                st.info(f"**{_active_label}**")
+                if st.button("新規セッション", use_container_width=True, key="desk_new_session"):
                     st.session_state.active_job_cwd = None
                     st.session_state.session_id = None
                     st.session_state.messages = []
+                    st.session_state.current_job_id = None
+                    st.session_state.screenshot_bytes = None
                     st.rerun()
+            else:
+                # 新規セッション: フォルダ選択可能
+                if st.session_state.flat_dirs:
+                    st.subheader("作業ディレクトリ")
+                    dir_options = st.session_state.flat_dirs
+                    dir_labels = {}
+                    for group_name, group_dirs in st.session_state.directories.items():
+                        group_base = get_path_basename(group_name)
+                        for d in group_dirs:
+                            dir_labels[d] = f"{group_base}/{get_path_basename(d)}"
+                    selected = st.selectbox(
+                        "CWD",
+                        options=dir_options,
+                        format_func=lambda x: dir_labels.get(x, get_path_basename(x)),
+                        index=dir_options.index(st.session_state.selected_dir)
+                        if st.session_state.selected_dir in dir_options else 0,
+                        label_visibility="collapsed",
+                    )
+                    st.session_state.selected_dir = selected
 
             # ── ジョブ一覧 ──
             if st.session_state.job_history:
@@ -1255,6 +1269,12 @@ with st.sidebar:
                             st.session_state.messages = process_native_events(events)
                             add_session(sid)
                             st.session_state.session_id = sid
+                            # cwdを復帰（サーバーから取得 or セッション一覧から取得）
+                            _pcwd = data.get("cwd") or sess.get("cwd")
+                            if _pcwd:
+                                st.session_state.active_job_cwd = _pcwd
+                                if _pcwd in st.session_state.flat_dirs:
+                                    st.session_state.selected_dir = _pcwd
                             st.rerun()
                         except Exception as e:
                             st.error(f"読み込みエラー: {e}")
