@@ -1434,6 +1434,43 @@ if st.session_state.screenshot_bytes:
                             st.session_state.screenshot_bytes = img
                             st.rerun()
 
+# ── ツールブロック表示ヘルパー ──
+def _render_tool_block(tool, msg_idx, tool_idx):
+    """1つのツールブロックを表示する"""
+    tool_name = tool.get("name", "tool")
+    tool_input = tool.get("input_str", "")
+    tool_result = tool.get("result", "")
+    file_path = extract_file_path(tool_input)
+
+    st.markdown(f"**{tool_name}**")
+    if tool_input:
+        formatted = parse_tool_input_display(tool_input)
+        st.code(formatted, language="json")
+    if file_path:
+        fname = get_path_basename(file_path)
+        if is_image_path(file_path):
+            st.markdown(f"**{fname}**")
+            try:
+                img_bytes, mime = st.session_state.client.get_file_bytes(file_path)
+                if img_bytes:
+                    st.image(img_bytes, caption=fname, use_container_width=True)
+            except Exception:
+                st.caption(f"画像の読み込みに失敗: {file_path}")
+        else:
+            st.markdown(f"**{fname}**")
+    if tool_result:
+        tool_id = tool.get("id", "")
+        if len(tool_result) > 500:
+            st.text_area(
+                "Result", value=tool_result, height=150,
+                disabled=True, label_visibility="collapsed",
+                key=f"tool_result_{msg_idx}_{tool_idx}_{tool_id}",
+            )
+        else:
+            st.code(tool_result, language=None)
+    # Note: caller should add separators between tools in grouped view if needed
+
+
 # ── チャット履歴表示 ──
 for _msg_idx, msg in enumerate(st.session_state.messages):
     role = msg.get("role", "assistant")
@@ -1456,49 +1493,28 @@ for _msg_idx, msg in enumerate(st.session_state.messages):
             else:
                 st.markdown(content)
 
-        # ツール使用部分
-        for _tool_idx, tool in enumerate(tool_blocks):
-            tool_name = tool.get("name", "tool")
-            tool_input = tool.get("input_str", "")
-            tool_result = tool.get("result", "")
-            file_path = extract_file_path(tool_input)
+        # ツール使用部分 — 多数ある場合はグループ化してコンパクトに表示
+        if tool_blocks:
+            _n_tools = len(tool_blocks)
+            if _n_tools > 3:
+                # 3個超: 1つのexpanderにまとめる
+                _tool_names = [t.get("name", "tool") for t in tool_blocks]
+                _summary = ", ".join(_tool_names[:4])
+                if _n_tools > 4:
+                    _summary += f" +{_n_tools - 4}"
+                with st.expander(f"> {_n_tools} tools: {_summary}", expanded=False):
+                    for _tool_idx, tool in enumerate(tool_blocks):
+                        _render_tool_block(tool, _msg_idx, _tool_idx)
+            else:
+                # 3個以下: 個別expander（従来通り）
+                for _tool_idx, tool in enumerate(tool_blocks):
+                    tool_name = tool.get("name", "tool")
+                    tool_input = tool.get("input_str", "")
+                    tool_result = tool.get("result", "")
+                    file_path = extract_file_path(tool_input)
 
-            with st.expander(f"> {tool_name}", expanded=False):
-                # ツール入力
-                if tool_input:
-                    formatted = parse_tool_input_display(tool_input)
-                    st.code(formatted, language="json")
-
-                # ファイルカード
-                if file_path:
-                    fname = get_path_basename(file_path)
-                    if is_image_path(file_path):
-                        st.markdown(f"**{fname}**")
-                        # 画像表示を試みる
-                        try:
-                            img_bytes, mime = st.session_state.client.get_file_bytes(file_path)
-                            if img_bytes:
-                                st.image(img_bytes, caption=fname, use_container_width=True)
-                        except Exception:
-                            st.caption(f"画像の読み込みに失敗: {file_path}")
-                    else:
-                        st.markdown(f"**{fname}**")
-
-                # ツール結果
-                if tool_result:
-                    # 長い結果は折りたたみ
-                    tool_id = tool.get("id", "")
-                    if len(tool_result) > 500:
-                        st.text_area(
-                            "Result",
-                            value=tool_result,
-                            height=200,
-                            disabled=True,
-                            label_visibility="collapsed",
-                            key=f"tool_result_{_msg_idx}_{_tool_idx}_{tool_id}",
-                        )
-                    else:
-                        st.code(tool_result, language=None)
+                    with st.expander(f"> {tool_name}", expanded=False):
+                        _render_tool_block(tool, _msg_idx, _tool_idx)
 
         # コスト情報
         if cost_info:
@@ -1678,6 +1694,7 @@ if prompt or _recovery_streaming:
     pending_tool = None
     cost_info = None
     all_events = []
+    turn_messages = []  # 各ターンのメッセージを保持
     done = False
 
     try:
@@ -1750,13 +1767,31 @@ if prompt or _recovery_streaming:
                             if pending_tool:
                                 pending_tool["input_str"] += delta.get("partial_json", "")
 
-                # assistant (完成メッセージ)
+                # assistant (完成メッセージ) — ターン境界で前のテキスト+ツールをフラッシュ
                 elif etype == "assistant":
+                    if accumulated_text or accumulated_tools:
+                        if pending_tool:
+                            accumulated_tools.append(pending_tool)
+                            pending_tool = None
+                        turn_messages.append({
+                            "role": "assistant",
+                            "content": accumulated_text,
+                            "tool_blocks": accumulated_tools[:],
+                            "cost_info": None,
+                        })
+                        # 前のテキストを確定表示し、新しいプレースホルダーを作成
+                        text_placeholder.markdown(accumulated_text)
+                        text_placeholder = streaming_container.empty()
+                        tool_container = streaming_container.container()
+                        accumulated_text = ""
+                        accumulated_tools = []
+
                     msg = ev.get("message", {})
                     for block in msg.get("content", []):
                         if block.get("type") == "text":
-                            accumulated_text = block.get("text", "")
-                            text_placeholder.markdown(accumulated_text)
+                            accumulated_text += block.get("text", "")
+                    if accumulated_text:
+                        text_placeholder.markdown(accumulated_text)
 
                 # user = tool_result
                 elif etype == "user":
@@ -1863,7 +1898,11 @@ if prompt or _recovery_streaming:
             else:
                 accumulated_text = error_text
 
-        # メッセージ履歴に追加
+        # メッセージ履歴に追加（ターン毎に分割保存）
+        # まず途中でフラッシュ済みのターンを追加
+        st.session_state.messages.extend(turn_messages)
+
+        # 残りのバッファを最終メッセージとして追加
         if accumulated_text or accumulated_tools:
             st.session_state.messages.append({
                 "role": "assistant",
