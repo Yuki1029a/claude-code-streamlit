@@ -1924,4 +1924,42 @@ if prompt or _recovery_streaming:
         except Exception:
             pass
 
+        # 完了通知（音 + ブラウザ通知）
+        _notify_preview = (accumulated_text or "")[:60].replace("'", "\\'").replace("\n", " ")
+        st.components.v1.html(f"""
+        <script>
+        (function() {{
+            // 通知音（Web Audio API — ファイル不要）
+            try {{
+                var ctx = new (window.AudioContext || window.webkitAudioContext)();
+                function beep(freq, start, dur) {{
+                    var o = ctx.createOscillator();
+                    var g = ctx.createGain();
+                    o.connect(g); g.connect(ctx.destination);
+                    o.type = 'sine';
+                    o.frequency.value = freq;
+                    g.gain.setValueAtTime(0.3, ctx.currentTime + start);
+                    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+                    o.start(ctx.currentTime + start);
+                    o.stop(ctx.currentTime + start + dur);
+                }}
+                beep(880, 0, 0.15);
+                beep(1100, 0.18, 0.2);
+            }} catch(e) {{}}
+
+            // ブラウザ通知
+            if ('Notification' in window) {{
+                if (Notification.permission === 'granted') {{
+                    new Notification('Claude Terminal', {{
+                        body: '{_notify_preview}' || 'タスク完了',
+                        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">></text></svg>'
+                    }});
+                }} else if (Notification.permission !== 'denied') {{
+                    Notification.requestPermission();
+                }}
+            }}
+        }})();
+        </script>
+        """, height=0)
+
     st.rerun()
