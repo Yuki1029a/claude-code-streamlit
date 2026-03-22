@@ -1673,12 +1673,9 @@ if prompt:
         st.error("作業ディレクトリを選択してください")
         st.stop()
 
-    # ストリーミング中なら前のジョブを自動キャンセル
+    # ストリーミング中なら前のジョブはサーバーで継続実行（キャンセルしない）
+    # UIだけ新しいジョブに切り替える
     if st.session_state.is_streaming and st.session_state.current_job_id:
-        try:
-            st.session_state.client.cancel_job(st.session_state.current_job_id)
-        except Exception:
-            pass
         st.session_state.is_streaming = False
         st.session_state.current_job_id = None
 
