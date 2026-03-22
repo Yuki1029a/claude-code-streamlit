@@ -1768,8 +1768,12 @@ if prompt or _recovery_streaming:
                                 pending_tool["input_str"] += delta.get("partial_json", "")
 
                 # assistant (完成メッセージ) — ターン境界で前のテキスト+ツールをフラッシュ
+                # NOTE: assistantイベントはストリームデルタの確認版。
+                # デルタで既にテキストがある場合はフラッシュのみ（重複防止）。
+                # デルタがない場合（ポーリングフォールバック）のみテキストを取得。
                 elif etype == "assistant":
                     if accumulated_text or accumulated_tools:
+                        # デルタで蓄積済み → フラッシュして次のターンへ
                         if pending_tool:
                             accumulated_tools.append(pending_tool)
                             pending_tool = None
@@ -1779,19 +1783,19 @@ if prompt or _recovery_streaming:
                             "tool_blocks": accumulated_tools[:],
                             "cost_info": None,
                         })
-                        # 前のテキストを確定表示し、新しいプレースホルダーを作成
                         text_placeholder.markdown(accumulated_text)
                         text_placeholder = streaming_container.empty()
                         tool_container = streaming_container.container()
                         accumulated_text = ""
                         accumulated_tools = []
-
-                    msg = ev.get("message", {})
-                    for block in msg.get("content", []):
-                        if block.get("type") == "text":
-                            accumulated_text += block.get("text", "")
-                    if accumulated_text:
-                        text_placeholder.markdown(accumulated_text)
+                    else:
+                        # デルタなし（ポーリングフォールバック）→ 完成メッセージからテキスト取得
+                        msg = ev.get("message", {})
+                        for block in msg.get("content", []):
+                            if block.get("type") == "text":
+                                accumulated_text += block.get("text", "")
+                        if accumulated_text:
+                            text_placeholder.markdown(accumulated_text)
 
                 # user = tool_result
                 elif etype == "user":
