@@ -1054,7 +1054,7 @@ with st.sidebar:
                     cwd_label = get_path_basename(job_cwd) if job_cwd else ""
                     created = job.get("created_at")
                     time_str = format_timestamp(created) if created else ""
-                    icon = {"running": "*", "completed": "+", "error": "!", "cancelled": "-"}.get(status, "?")
+                    icon = {"running": "🔄", "completed": "✅", "error": "❌", "cancelled": "⛔"}.get(status, "❓")
                     is_active = (job_id == st.session_state.current_job_id)
                     marker = ">" if is_active else ""
                     label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
@@ -1185,7 +1185,7 @@ with st.sidebar:
                     cwd_label = get_path_basename(job_cwd) if job_cwd else ""
                     created = job.get("created_at")
                     time_str = format_timestamp(created) if created else ""
-                    icon = {"running": "*", "completed": "+", "error": "!", "cancelled": "-"}.get(status, "?")
+                    icon = {"running": "🔄", "completed": "✅", "error": "❌", "cancelled": "⛔"}.get(status, "❓")
                     is_active = (job_id == st.session_state.current_job_id)
                     marker = "> " if is_active else ""
                     label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
@@ -1657,11 +1657,9 @@ _recovery_streaming = (
 )
 
 # ── プロンプト入力 ──
+# ストリーミング中でも入力可能（新プロンプト送信時は前ジョブを自動キャンセル）
 if not _recovery_streaming:
-    prompt = st.chat_input(
-        "プロンプトを入力...",
-        disabled=st.session_state.is_streaming,
-    )
+    prompt = st.chat_input("プロンプトを入力...")
 else:
     prompt = None
 
@@ -1674,6 +1672,15 @@ if prompt:
     if not cwd:
         st.error("作業ディレクトリを選択してください")
         st.stop()
+
+    # ストリーミング中なら前のジョブを自動キャンセル
+    if st.session_state.is_streaming and st.session_state.current_job_id:
+        try:
+            st.session_state.client.cancel_job(st.session_state.current_job_id)
+        except Exception:
+            pass
+        st.session_state.is_streaming = False
+        st.session_state.current_job_id = None
 
     # ユーザーメッセージを追加
     st.session_state.messages.append({
