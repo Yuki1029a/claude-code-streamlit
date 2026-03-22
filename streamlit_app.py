@@ -417,6 +417,7 @@ def init_state():
         "session_dirs": {},                     # {session_id: cwd} セッション→ディレクトリ対応
         "recovery_checked": False,              # ジョブ復帰チェック済みフラグ
         "active_job_cwd": None,                 # ジョブ再開時の作業ディレクトリ（Noneなら新規）
+        "notify_completion": None,               # 完了通知用（テキストプレビュー or None）
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1524,6 +1525,47 @@ for _msg_idx, msg in enumerate(st.session_state.messages):
             )
 
 
+# ── 完了通知（rerun後に発火） ──
+if st.session_state.notify_completion:
+    _np = st.session_state.notify_completion.replace("'", "\\'")
+    st.session_state.notify_completion = None  # 1回だけ発火
+    st.components.v1.html(f"""
+    <script>
+    (function() {{
+        // 通知音（Web Audio API）
+        try {{
+            var ctx = new (window.AudioContext || window.webkitAudioContext)();
+            function beep(freq, start, dur) {{
+                var o = ctx.createOscillator();
+                var g = ctx.createGain();
+                o.connect(g); g.connect(ctx.destination);
+                o.type = 'sine';
+                o.frequency.value = freq;
+                g.gain.setValueAtTime(0.3, ctx.currentTime + start);
+                g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+                o.start(ctx.currentTime + start);
+                o.stop(ctx.currentTime + start + dur);
+            }}
+            beep(880, 0, 0.15);
+            beep(1100, 0.18, 0.2);
+        }} catch(e) {{}}
+
+        // ブラウザ通知
+        if ('Notification' in window) {{
+            if (Notification.permission === 'granted') {{
+                new Notification('Claude Terminal', {{
+                    body: '{_np}',
+                    tag: 'claude-done'
+                }});
+            }} else if (Notification.permission !== 'denied') {{
+                Notification.requestPermission();
+            }}
+        }}
+    }})();
+    </script>
+    """, height=0)
+
+
 # ── ストリーミング中のキャンセルボタン ──
 if st.session_state.is_streaming:
     if st.button("キャンセル", type="primary", use_container_width=True):
@@ -1924,42 +1966,8 @@ if prompt or _recovery_streaming:
         except Exception:
             pass
 
-        # 完了通知（音 + ブラウザ通知）
-        _notify_preview = (accumulated_text or "")[:60].replace("'", "\\'").replace("\n", " ")
-        st.components.v1.html(f"""
-        <script>
-        (function() {{
-            // 通知音（Web Audio API — ファイル不要）
-            try {{
-                var ctx = new (window.AudioContext || window.webkitAudioContext)();
-                function beep(freq, start, dur) {{
-                    var o = ctx.createOscillator();
-                    var g = ctx.createGain();
-                    o.connect(g); g.connect(ctx.destination);
-                    o.type = 'sine';
-                    o.frequency.value = freq;
-                    g.gain.setValueAtTime(0.3, ctx.currentTime + start);
-                    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
-                    o.start(ctx.currentTime + start);
-                    o.stop(ctx.currentTime + start + dur);
-                }}
-                beep(880, 0, 0.15);
-                beep(1100, 0.18, 0.2);
-            }} catch(e) {{}}
-
-            // ブラウザ通知
-            if ('Notification' in window) {{
-                if (Notification.permission === 'granted') {{
-                    new Notification('Claude Terminal', {{
-                        body: '{_notify_preview}' || 'タスク完了',
-                        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">></text></svg>'
-                    }});
-                }} else if (Notification.permission !== 'denied') {{
-                    Notification.requestPermission();
-                }}
-            }}
-        }})();
-        </script>
-        """, height=0)
+        # 完了通知フラグをセット（rerun後のメインレンダーで発火）
+        _notify_preview = (accumulated_text or "")[:60].replace("\n", " ")
+        st.session_state.notify_completion = _notify_preview or "タスク完了"
 
     st.rerun()
