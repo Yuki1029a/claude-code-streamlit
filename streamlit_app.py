@@ -672,6 +672,7 @@ def process_events(events: list) -> list:
     current_text = ""
     current_tools = []
     pending_tool = None  # {name, id, input_str}
+    has_deltas = False  # stream_eventテキストデルタを受信したか
 
     for ev in events:
         etype = ev.get("type", "")
@@ -687,11 +688,14 @@ def process_events(events: list) -> list:
                     st.session_state.session_dirs[sid] = init_cwd
 
         # ── assistant (完成メッセージ) ──
+        # デルタで既にテキストを受信している場合はスキップ（重複防止）
         elif etype == "assistant":
-            msg = ev.get("message", {})
-            for block in msg.get("content", []):
-                if block.get("type") == "text":
-                    current_text += block.get("text", "")
+            if not has_deltas:
+                # ポーリングフォールバック時のみテキストを取得
+                msg = ev.get("message", {})
+                for block in msg.get("content", []):
+                    if block.get("type") == "text":
+                        current_text += block.get("text", "")
 
         # ── user = tool_result ──
         elif etype == "user":
@@ -741,6 +745,7 @@ def process_events(events: list) -> list:
                 delta = inner.get("delta", {})
                 if delta.get("type") == "text_delta":
                     current_text += delta.get("text", "")
+                    has_deltas = True
                 elif delta.get("type") == "input_json_delta":
                     if pending_tool:
                         pending_tool["input_str"] += delta.get("partial_json", "")
@@ -777,6 +782,7 @@ def process_events(events: list) -> list:
                 })
                 current_text = ""
                 current_tools = []
+                has_deltas = False
 
         # ── error / stderr ──
         elif etype in ("error", "stderr"):
@@ -1054,7 +1060,7 @@ with st.sidebar:
                     cwd_label = get_path_basename(job_cwd) if job_cwd else ""
                     created = job.get("created_at")
                     time_str = format_timestamp(created) if created else ""
-                    icon = {"running": "🔄", "completed": "✅", "error": "❌", "cancelled": "⛔"}.get(status, "❓")
+                    icon = {"running": "🔄実行中", "completed": "✅完了", "error": "❌エラー", "cancelled": "⛔中止"}.get(status, "❓")
                     is_active = (job_id == st.session_state.current_job_id)
                     marker = ">" if is_active else ""
                     label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
@@ -1185,7 +1191,7 @@ with st.sidebar:
                     cwd_label = get_path_basename(job_cwd) if job_cwd else ""
                     created = job.get("created_at")
                     time_str = format_timestamp(created) if created else ""
-                    icon = {"running": "🔄", "completed": "✅", "error": "❌", "cancelled": "⛔"}.get(status, "❓")
+                    icon = {"running": "🔄実行中", "completed": "✅完了", "error": "❌エラー", "cancelled": "⛔中止"}.get(status, "❓")
                     is_active = (job_id == st.session_state.current_job_id)
                     marker = "> " if is_active else ""
                     label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
