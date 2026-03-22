@@ -1736,7 +1736,6 @@ if prompt or _recovery_streaming:
     pending_tool = None
     cost_info = None
     all_events = []
-    turn_messages = []  # 各ターンのメッセージを保持
     done = False
 
     try:
@@ -1809,28 +1808,11 @@ if prompt or _recovery_streaming:
                             if pending_tool:
                                 pending_tool["input_str"] += delta.get("partial_json", "")
 
-                # assistant (完成メッセージ) — ターン境界で前のテキスト+ツールをフラッシュ
-                # NOTE: assistantイベントはストリームデルタの確認版。
-                # デルタで既にテキストがある場合はフラッシュのみ（重複防止）。
-                # デルタがない場合（ポーリングフォールバック）のみテキストを取得。
+                # assistant (完成メッセージ)
+                # ストリームデルタの確認版 → 表示用にはスキップ
+                # （all_eventsに記録済みなのでprocess_eventsが最終メッセージ構築時に使う）
                 elif etype == "assistant":
-                    if accumulated_text or accumulated_tools:
-                        # デルタで蓄積済み → フラッシュして次のターンへ
-                        if pending_tool:
-                            accumulated_tools.append(pending_tool)
-                            pending_tool = None
-                        turn_messages.append({
-                            "role": "assistant",
-                            "content": accumulated_text,
-                            "tool_blocks": accumulated_tools[:],
-                            "cost_info": None,
-                        })
-                        text_placeholder.markdown(accumulated_text)
-                        text_placeholder = streaming_container.empty()
-                        tool_container = streaming_container.container()
-                        accumulated_text = ""
-                        accumulated_tools = []
-                    else:
+                    if not accumulated_text:
                         # デルタなし（ポーリングフォールバック）→ 完成メッセージからテキスト取得
                         msg = ev.get("message", {})
                         for block in msg.get("content", []):
@@ -1944,12 +1926,12 @@ if prompt or _recovery_streaming:
             else:
                 accumulated_text = error_text
 
-        # メッセージ履歴に追加（ターン毎に分割保存）
-        # まず途中でフラッシュ済みのターンを追加
-        st.session_state.messages.extend(turn_messages)
-
-        # 残りのバッファを最終メッセージとして追加
-        if accumulated_text or accumulated_tools:
+        # メッセージ履歴に追加（all_eventsから一括変換 — 重複なし）
+        structured_msgs = process_events(all_events)
+        if structured_msgs:
+            st.session_state.messages.extend(structured_msgs)
+        elif accumulated_text or accumulated_tools:
+            # フォールバック: process_eventsが空の場合は手動保存
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": accumulated_text,
@@ -1967,7 +1949,13 @@ if prompt or _recovery_streaming:
             pass
 
         # 完了通知フラグをセット（rerun後のメインレンダーで発火）
-        _notify_preview = (accumulated_text or "")[:60].replace("\n", " ")
+        _last_text = ""
+        if structured_msgs:
+            for _m in reversed(structured_msgs):
+                if _m.get("content"):
+                    _last_text = _m["content"]
+                    break
+        _notify_preview = (_last_text or accumulated_text or "")[:60].replace("\n", " ")
         st.session_state.notify_completion = _notify_preview or "タスク完了"
 
     st.rerun()
