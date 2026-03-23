@@ -1696,14 +1696,14 @@ _recovery_streaming = (
     and st.session_state.client
 )
 
-# ── 画像アップロード ──
+# ── 画像アップロード（サイドバーに配置） ──
 _uploaded_images = None
 if not _recovery_streaming and st.session_state.connected:
-    _uploaded_files = st.file_uploader(
-        "画像を添付", type=["png", "jpg", "jpeg", "gif", "webp"],
-        accept_multiple_files=True, key="img_upload",
-        label_visibility="collapsed",
-    )
+    with st.sidebar:
+        _uploaded_files = st.file_uploader(
+            "画像を添付", type=["png", "jpg", "jpeg", "gif", "webp"],
+            accept_multiple_files=True, key="img_upload",
+        )
     if _uploaded_files:
         _uploaded_images = []
         for uf in _uploaded_files[:4]:
@@ -2050,17 +2050,29 @@ st.components.v1.html("""
 <script>
 (function(){
     var doc = window.parent.document;
-    if(doc.getElementById('scroll-bottom-btn')) return;
+    // 既存ボタンがあれば削除して再作成（rerun対応）
+    var old = doc.getElementById('scroll-bottom-btn');
+    if(old) old.remove();
     var btn = doc.createElement('button');
     btn.id = 'scroll-bottom-btn';
-    btn.title = '一番下へ';
     btn.textContent = '\\u25BC';
-    btn.style.cssText = 'position:fixed;bottom:160px;right:12px;z-index:9999;width:40px;height:40px;border-radius:50%;background:#333;color:#e0e0e0;border:1px solid #555;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.5);opacity:0.7;';
+    btn.style.cssText = 'position:fixed;bottom:160px;right:12px;z-index:999999;width:44px;height:44px;border-radius:50%;background:#333;color:#e0e0e0;border:1px solid #555;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.5);opacity:0.8;';
     btn.addEventListener('click', function(){
-        var main = doc.querySelector('section.main');
-        if(main) main.scrollTo({top: main.scrollHeight, behavior: 'smooth'});
+        // 複数のスクロールターゲットを試す
+        var targets = [
+            doc.querySelector('[data-testid="stMainBlockContainer"]'),
+            doc.querySelector('section.main .block-container'),
+            doc.querySelector('section.main'),
+            doc.documentElement
+        ];
+        for(var i=0;i<targets.length;i++){
+            if(targets[i]){
+                targets[i].scrollTop = targets[i].scrollHeight;
+            }
+        }
+        window.parent.scrollTo(0, doc.body.scrollHeight);
     });
     doc.body.appendChild(btn);
 })();
 </script>
-""", height=0)
+""", height=1)
