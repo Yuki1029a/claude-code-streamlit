@@ -47,16 +47,19 @@ st.markdown("""
     background-color: #0a0a0a !important;
 }
 
-/* ヘッダー非表示分のtop padding調整 */
-.block-container {
-    padding-top: 1rem !important;
-}
-
-/* ヘッダーバー（上部） — 非表示にして枠はみ出し防止 */
+/* ヘッダーバー（上部） — 黒に統一、高さ縮小 */
 header[data-testid="stHeader"],
 .stAppHeader,
 header {
-    display: none !important;
+    background-color: #0a0a0a !important;
+    background: #0a0a0a !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
+}
+
+/* block-container上部の余白を詰める */
+.block-container {
+    padding-top: 1rem !important;
 }
 
 /* デプロイバー */
@@ -2000,7 +2003,7 @@ st.components.v1.html("""
     btn.id = 'scroll-bottom-btn';
     btn.title = '一番下へ';
     btn.textContent = '\\u25BC';
-    btn.style.cssText = 'position:fixed;bottom:90px;right:24px;z-index:9999;width:44px;height:44px;border-radius:50%;background:#333;color:#e0e0e0;border:1px solid #555;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.5);opacity:0.8;';
+    btn.style.cssText = 'position:fixed;bottom:160px;right:12px;z-index:9999;width:40px;height:40px;border-radius:50%;background:#333;color:#e0e0e0;border:1px solid #555;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.5);opacity:0.7;';
     btn.addEventListener('click', function(){
         var main = doc.querySelector('section.main');
         if(main) main.scrollTo({top: main.scrollHeight, behavior: 'smooth'});
