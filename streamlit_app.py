@@ -5,6 +5,7 @@ Streamlit Cloud → ngrok → Flask バックエンドへのプロキシUI。
 ngrokドメインがブロックされるネットワークでも利用可能。
 """
 
+import base64
 import json
 import queue
 import re
@@ -1488,6 +1489,16 @@ for _msg_idx, msg in enumerate(st.session_state.messages):
         continue
 
     with st.chat_message(role):
+        # ユーザーメッセージの添付画像サムネイル
+        _msg_images = msg.get("images", [])
+        if _msg_images and role == "user":
+            for _img_info in _msg_images:
+                try:
+                    _img_bytes = base64.b64decode(_img_info["data"])
+                    st.image(_img_bytes, caption=_img_info.get("name", ""), width=200)
+                except Exception:
+                    st.caption(f"[画像: {_img_info.get('name', '?')}]")
+
         # テキスト部分
         if content:
             if role == "user":
@@ -1526,15 +1537,18 @@ for _msg_idx, msg in enumerate(st.session_state.messages):
             )
 
 
-# ── セッション履歴のチャンク読み込み（チャット末尾に表示） ──
+# ── セッション履歴のチャンク読み込み ──
 _HISTORY_CHUNK = 50
 if (st.session_state.session_id
     and not st.session_state.is_streaming
     and st.session_state.client):
     _show_load = (not st.session_state.messages) or st.session_state.history_has_more
     if _show_load:
+        # チャットが空の時はスペーサーで下に押し下げる
+        if not st.session_state.messages:
+            st.markdown("<div style='min-height:30vh'></div>", unsafe_allow_html=True)
         _btn_label = "さらに読み込む" if st.session_state.messages else "履歴を読み込む"
-        if st.button(_btn_label, key="load_session_history"):
+        if st.button(_btn_label, key="load_session_history", use_container_width=True):
             try:
                 data = st.session_state.client.get_session_events(
                     st.session_state.session_id,
@@ -1682,6 +1696,31 @@ _recovery_streaming = (
     and st.session_state.client
 )
 
+# ── 画像アップロード ──
+_uploaded_images = None
+if not _recovery_streaming and st.session_state.connected:
+    _uploaded_files = st.file_uploader(
+        "画像を添付", type=["png", "jpg", "jpeg", "gif", "webp"],
+        accept_multiple_files=True, key="img_upload",
+        label_visibility="collapsed",
+    )
+    if _uploaded_files:
+        _uploaded_images = []
+        for uf in _uploaded_files[:4]:
+            raw = uf.read()
+            if len(raw) > 5 * 1024 * 1024:
+                st.warning(f"{uf.name}: 5MBを超えるためスキップ")
+                continue
+            ext = uf.name.rsplit(".", 1)[-1].lower()
+            mt = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                  "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/png")
+            _uploaded_images.append({
+                "data": base64.b64encode(raw).decode(),
+                "media_type": mt,
+                "name": uf.name,
+                "raw": raw,
+            })
+
 # ── プロンプト入力 ──
 # ストリーミング中でも入力可能（新プロンプト送信時は前ジョブを自動キャンセル）
 if not _recovery_streaming:
@@ -1705,21 +1744,36 @@ if prompt:
         st.session_state.is_streaming = False
         st.session_state.current_job_id = None
 
-    # ユーザーメッセージを追加
+    # ユーザーメッセージを追加（画像付きの場合はサムネイルパスも保存）
+    _msg_content = prompt
+    _msg_images_b64 = []
+    if _uploaded_images:
+        _msg_images_b64 = [
+            {"data": img["data"], "media_type": img["media_type"], "name": img["name"]}
+            for img in _uploaded_images
+        ]
     st.session_state.messages.append({
         "role": "user",
-        "content": prompt,
+        "content": _msg_content,
         "tool_blocks": [],
         "cost_info": None,
+        "images": _msg_images_b64,
     })
 
     # ジョブ送信
     try:
+        _send_images = None
+        if _uploaded_images:
+            _send_images = [
+                {"data": img["data"], "media_type": img["media_type"]}
+                for img in _uploaded_images
+            ]
         result = st.session_state.client.send_prompt(
             prompt=prompt,
             cwd=cwd,
             session_id=st.session_state.session_id,
             model=st.session_state.selected_model,
+            images=_send_images,
         )
         job_id = result.get("job_id")
         if not job_id:

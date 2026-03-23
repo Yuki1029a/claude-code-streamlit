@@ -101,18 +101,21 @@ class BackendClient:
 
     @_retry_on_429
     def send_prompt(self, prompt: str, cwd: str,
-                    session_id: str = None, model: str = None) -> dict:
-        """プロンプトを送信してジョブを作成"""
+                    session_id: str = None, model: str = None,
+                    images: list = None) -> dict:
+        """プロンプトを送信してジョブを作成。imagesは[{data: base64str, media_type: str}]"""
         payload = {"prompt": prompt, "cwd": cwd}
         if session_id:
             payload["session_id"] = session_id
         if model:
             payload["model"] = model
+        if images:
+            payload["images"] = images
         resp = self.session.post(
             f"{self.base_url}/api/prompt",
             json=payload,
             headers=self._headers(),
-            timeout=10,
+            timeout=30,
         )
         resp.raise_for_status()
         return resp.json()
