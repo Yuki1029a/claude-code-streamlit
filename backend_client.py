@@ -210,10 +210,17 @@ class BackendClient:
         return resp.json()
 
     @_retry_on_429
-    def get_session_events(self, session_id: str) -> dict:
-        """セッションの全イベント（JSONLの内容）を取得"""
+    def get_session_events(self, session_id: str,
+                           limit: int = None, offset: int = 0) -> dict:
+        """セッションのイベントを取得。limit指定で末尾N行のみ。"""
+        params = {}
+        if limit is not None:
+            params["limit"] = limit
+        if offset:
+            params["offset"] = offset
         resp = self.session.get(
             f"{self.base_url}/api/sessions/{session_id}/events",
+            params=params,
             timeout=30,
         )
         resp.raise_for_status()

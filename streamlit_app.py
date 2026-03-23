@@ -47,14 +47,16 @@ st.markdown("""
     background-color: #0a0a0a !important;
 }
 
-/* ヘッダーバー（上部） — 黒に統一 */
+/* ヘッダー非表示分のtop padding調整 */
+.block-container {
+    padding-top: 1rem !important;
+}
+
+/* ヘッダーバー（上部） — 非表示にして枠はみ出し防止 */
 header[data-testid="stHeader"],
 .stAppHeader,
 header {
-    background-color: #0a0a0a !important;
-    background: #0a0a0a !important;
-    border-bottom: none !important;
-    box-shadow: none !important;
+    display: none !important;
 }
 
 /* デプロイバー */
@@ -418,6 +420,9 @@ def init_state():
         "recovery_checked": False,              # ジョブ復帰チェック済みフラグ
         "active_job_cwd": None,                 # ジョブ再開時の作業ディレクトリ（Noneなら新規）
         "notify_completion": None,               # 完了通知用（テキストプレビュー or None）
+        "history_offset": 0,                        # 履歴ページネーション: 読み込み済みオフセット
+        "history_has_more": False,                   # まだ古い履歴があるか
+        "history_total_lines": 0,                    # セッション総行数
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1067,6 +1072,8 @@ with st.sidebar:
                     if st.button(label, key=f"job_{job_id}", use_container_width=True):
                         # 即座に切替（イベント取得なし）
                         st.session_state.messages = []
+                        st.session_state.history_offset = 0
+                        st.session_state.history_has_more = False
                         st.session_state.current_job_id = job_id
                         sid = job.get("session_id_out")
                         if sid:
@@ -1100,6 +1107,8 @@ with st.sidebar:
                         add_session(sid)
                         st.session_state.session_id = sid
                         st.session_state.messages = []
+                        st.session_state.history_offset = 0
+                        st.session_state.history_has_more = False
                         _pcwd = sess.get("cwd") or sess.get("project_dir")
                         if _pcwd:
                             st.session_state.active_job_cwd = _pcwd
@@ -1188,6 +1197,8 @@ with st.sidebar:
                     if st.button(label, key=f"job_{job_id}", use_container_width=True):
                         # 即座に切替（イベント取得なし）
                         st.session_state.messages = []
+                        st.session_state.history_offset = 0
+                        st.session_state.history_has_more = False
                         st.session_state.current_job_id = job_id
                         sid = job.get("session_id_out")
                         if sid:
@@ -1258,6 +1269,8 @@ with st.sidebar:
                         add_session(sid)
                         st.session_state.session_id = sid
                         st.session_state.messages = []
+                        st.session_state.history_offset = 0
+                        st.session_state.history_has_more = False
                         _pcwd = sess.get("cwd") or sess.get("project_dir")
                         if _pcwd:
                             st.session_state.active_job_cwd = _pcwd
@@ -1457,21 +1470,32 @@ def _render_tool_block(tool, msg_idx, tool_idx):
     # Note: caller should add separators between tools in grouped view if needed
 
 
-# ── セッション切替後の履歴読み込みボタン ──
+# ── セッション履歴のチャンク読み込み ──
+_HISTORY_CHUNK = 50  # 1回に読み込む行数
 if (st.session_state.session_id
-    and not st.session_state.messages
     and not st.session_state.is_streaming
     and st.session_state.client):
-    if st.button("履歴を読み込む", key="load_session_history"):
-        try:
-            with st.spinner("読込中…"):
+    # 初回読み込み or さらに読み込む
+    _show_load = (not st.session_state.messages) or st.session_state.history_has_more
+    if _show_load:
+        _btn_label = "さらに読み込む" if st.session_state.messages else "履歴を読み込む"
+        if st.button(_btn_label, key="load_session_history"):
+            try:
                 data = st.session_state.client.get_session_events(
-                    st.session_state.session_id)
-            events = data.get("events", [])
-            st.session_state.messages = process_native_events(events)
-            st.rerun()
-        except Exception as e:
-            st.error(f"履歴読み込みエラー: {e}")
+                    st.session_state.session_id,
+                    limit=_HISTORY_CHUNK,
+                    offset=st.session_state.history_offset,
+                )
+                events = data.get("events", [])
+                new_msgs = process_native_events(events)
+                # 古い履歴を先頭に追加
+                st.session_state.messages = new_msgs + st.session_state.messages
+                st.session_state.history_offset += _HISTORY_CHUNK
+                st.session_state.history_has_more = data.get("has_more", False)
+                st.session_state.history_total_lines = data.get("total_lines", 0)
+                st.rerun()
+            except Exception as e:
+                st.error(f"履歴読み込みエラー: {e}")
 
 # ── チャット履歴表示 ──
 for _msg_idx, msg in enumerate(st.session_state.messages):
@@ -1966,23 +1990,22 @@ if prompt or _recovery_streaming:
     st.rerun()
 
 
-# ── スクロールボトムボタン（親ページに直接注入） ──
-st.markdown("""
+# ── スクロールボトムボタン（iframe経由で親ページに注入） ──
+st.components.v1.html("""
 <script>
 (function(){
-    if(document.getElementById('scroll-bottom-btn')) return;
-    var btn = document.createElement('button');
+    var doc = window.parent.document;
+    if(doc.getElementById('scroll-bottom-btn')) return;
+    var btn = doc.createElement('button');
     btn.id = 'scroll-bottom-btn';
     btn.title = '一番下へ';
-    btn.innerHTML = '&#x25BC;';
-    btn.style.cssText = 'position:fixed;bottom:90px;right:24px;z-index:9999;width:44px;height:44px;border-radius:50%;background:#333;color:#e0e0e0;border:1px solid #555;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.5);opacity:0.8;transition:opacity 0.2s;';
-    btn.onmouseover = function(){this.style.opacity='1';this.style.background='#444';};
-    btn.onmouseout = function(){this.style.opacity='0.8';this.style.background='#333';};
-    btn.onclick = function(){
-        var main = document.querySelector('section.main');
+    btn.textContent = '\\u25BC';
+    btn.style.cssText = 'position:fixed;bottom:90px;right:24px;z-index:9999;width:44px;height:44px;border-radius:50%;background:#333;color:#e0e0e0;border:1px solid #555;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.5);opacity:0.8;';
+    btn.addEventListener('click', function(){
+        var main = doc.querySelector('section.main');
         if(main) main.scrollTo({top: main.scrollHeight, behavior: 'smooth'});
-    };
-    document.body.appendChild(btn);
+    });
+    doc.body.appendChild(btn);
 })();
 </script>
-""", unsafe_allow_html=True)
+""", height=0)
