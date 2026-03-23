@@ -1065,23 +1065,19 @@ with st.sidebar:
                     marker = ">" if is_active else ""
                     label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
                     if st.button(label, key=f"job_{job_id}", use_container_width=True):
-                        try:
-                            job_data = st.session_state.client.get_job(job_id)
-                            events = job_data.get("events", [])
-                            st.session_state.messages = process_events(events)
-                            sid = job_data.get("session_id_out")
-                            if sid:
-                                add_session(sid)
-                                st.session_state.session_id = sid
-                            st.session_state.current_job_id = job_id
-                            _jcwd = job_data.get("cwd") or job.get("cwd")
-                            if _jcwd:
-                                st.session_state.active_job_cwd = _jcwd
-                                if _jcwd in st.session_state.flat_dirs:
-                                    st.session_state.selected_dir = _jcwd
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"エラー: {e}")
+                        # 即座に切替（イベント取得なし）
+                        st.session_state.messages = []
+                        st.session_state.current_job_id = job_id
+                        sid = job.get("session_id_out")
+                        if sid:
+                            add_session(sid)
+                            st.session_state.session_id = sid
+                        _jcwd = job.get("cwd")
+                        if _jcwd:
+                            st.session_state.active_job_cwd = _jcwd
+                            if _jcwd in st.session_state.flat_dirs:
+                                st.session_state.selected_dir = _jcwd
+                        st.rerun()
 
             # ── モバイル: PC履歴（直近8件）──
             if st.session_state.pc_sessions:
@@ -1100,22 +1096,16 @@ with st.sidebar:
                     label = f"{'>' if is_current else '>'} {time_str} {preview}"
                     if st.button(label, key=f"pcsess_{sid}", use_container_width=True,
                                  help=f"{sid[:8]} | {line_count}行"):
-                        try:
-                            with st.spinner("読込中…"):
-                                data = st.session_state.client.get_session_events(sid)
-                            events = data.get("events", [])
-                            st.session_state.messages = process_native_events(events)
-                            add_session(sid)
-                            st.session_state.session_id = sid
-                            # cwdを復帰（サーバーから取得 or セッション一覧から取得）
-                            _pcwd = data.get("cwd") or sess.get("cwd")
-                            if _pcwd:
-                                st.session_state.active_job_cwd = _pcwd
-                                if _pcwd in st.session_state.flat_dirs:
-                                    st.session_state.selected_dir = _pcwd
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"エラー: {e}")
+                        # 即座に切替（イベント取得なし）
+                        add_session(sid)
+                        st.session_state.session_id = sid
+                        st.session_state.messages = []
+                        _pcwd = sess.get("cwd") or sess.get("project_dir")
+                        if _pcwd:
+                            st.session_state.active_job_cwd = _pcwd
+                            if _pcwd in st.session_state.flat_dirs:
+                                st.session_state.selected_dir = _pcwd
+                        st.rerun()
             elif st.session_state.pc_sessions_loaded:
                 st.caption("セッションなし")
             else:
@@ -1196,24 +1186,19 @@ with st.sidebar:
                     marker = "> " if is_active else ""
                     label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
                     if st.button(label, key=f"job_{job_id}", use_container_width=True):
-                        try:
-                            job_data = st.session_state.client.get_job(job_id)
-                            events = job_data.get("events", [])
-                            st.session_state.messages = process_events(events)
-                            sid = job_data.get("session_id_out")
-                            if sid:
-                                add_session(sid)
-                                st.session_state.session_id = sid
-                            st.session_state.current_job_id = job_id
-                            # cwd を復帰
-                            _jcwd = job_data.get("cwd") or job.get("cwd")
-                            if _jcwd:
-                                st.session_state.active_job_cwd = _jcwd
-                                if _jcwd in st.session_state.flat_dirs:
-                                    st.session_state.selected_dir = _jcwd
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"ジョブ読み込みエラー: {e}")
+                        # 即座に切替（イベント取得なし）
+                        st.session_state.messages = []
+                        st.session_state.current_job_id = job_id
+                        sid = job.get("session_id_out")
+                        if sid:
+                            add_session(sid)
+                            st.session_state.session_id = sid
+                        _jcwd = job.get("cwd")
+                        if _jcwd:
+                            st.session_state.active_job_cwd = _jcwd
+                            if _jcwd in st.session_state.flat_dirs:
+                                st.session_state.selected_dir = _jcwd
+                        st.rerun()
 
             # ── スクリーンショット / ジョブ履歴リフレッシュ ──
             st.divider()
@@ -1269,22 +1254,16 @@ with st.sidebar:
                     label = f"{'> ' if is_current else ''}{time_str} {preview}"
                     if st.button(label, key=f"pcsess_{sid}", use_container_width=True,
                                  help=f"Session: {sid[:8]}…\n{line_count}行 | {project[-30:]}"):
-                        try:
-                            with st.spinner("セッション読み込み中..."):
-                                data = st.session_state.client.get_session_events(sid)
-                            events = data.get("events", [])
-                            st.session_state.messages = process_native_events(events)
-                            add_session(sid)
-                            st.session_state.session_id = sid
-                            # cwdを復帰（サーバーから取得 or セッション一覧から取得）
-                            _pcwd = data.get("cwd") or sess.get("cwd")
-                            if _pcwd:
-                                st.session_state.active_job_cwd = _pcwd
-                                if _pcwd in st.session_state.flat_dirs:
-                                    st.session_state.selected_dir = _pcwd
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"読み込みエラー: {e}")
+                        # 即座に切替（イベント取得なし）
+                        add_session(sid)
+                        st.session_state.session_id = sid
+                        st.session_state.messages = []
+                        _pcwd = sess.get("cwd") or sess.get("project_dir")
+                        if _pcwd:
+                            st.session_state.active_job_cwd = _pcwd
+                            if _pcwd in st.session_state.flat_dirs:
+                                st.session_state.selected_dir = _pcwd
+                        st.rerun()
             elif st.session_state.pc_sessions_loaded:
                 st.caption("セッションが見つかりません")
             else:
@@ -1477,6 +1456,22 @@ def _render_tool_block(tool, msg_idx, tool_idx):
             st.code(tool_result, language=None)
     # Note: caller should add separators between tools in grouped view if needed
 
+
+# ── セッション切替後の履歴読み込みボタン ──
+if (st.session_state.session_id
+    and not st.session_state.messages
+    and not st.session_state.is_streaming
+    and st.session_state.client):
+    if st.button("履歴を読み込む", key="load_session_history"):
+        try:
+            with st.spinner("読込中…"):
+                data = st.session_state.client.get_session_events(
+                    st.session_state.session_id)
+            events = data.get("events", [])
+            st.session_state.messages = process_native_events(events)
+            st.rerun()
+        except Exception as e:
+            st.error(f"履歴読み込みエラー: {e}")
 
 # ── チャット履歴表示 ──
 for _msg_idx, msg in enumerate(st.session_state.messages):
@@ -1969,3 +1964,25 @@ if prompt or _recovery_streaming:
         st.session_state.notify_completion = _notify_preview or "タスク完了"
 
     st.rerun()
+
+
+# ── スクロールボトムボタン（親ページに直接注入） ──
+st.markdown("""
+<script>
+(function(){
+    if(document.getElementById('scroll-bottom-btn')) return;
+    var btn = document.createElement('button');
+    btn.id = 'scroll-bottom-btn';
+    btn.title = '一番下へ';
+    btn.innerHTML = '&#x25BC;';
+    btn.style.cssText = 'position:fixed;bottom:90px;right:24px;z-index:9999;width:44px;height:44px;border-radius:50%;background:#333;color:#e0e0e0;border:1px solid #555;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.5);opacity:0.8;transition:opacity 0.2s;';
+    btn.onmouseover = function(){this.style.opacity='1';this.style.background='#444';};
+    btn.onmouseout = function(){this.style.opacity='0.8';this.style.background='#333';};
+    btn.onclick = function(){
+        var main = document.querySelector('section.main');
+        if(main) main.scrollTo({top: main.scrollHeight, behavior: 'smooth'});
+    };
+    document.body.appendChild(btn);
+})();
+</script>
+""", unsafe_allow_html=True)
