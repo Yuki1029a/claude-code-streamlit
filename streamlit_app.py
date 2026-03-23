@@ -1473,33 +1473,6 @@ def _render_tool_block(tool, msg_idx, tool_idx):
     # Note: caller should add separators between tools in grouped view if needed
 
 
-# ── セッション履歴のチャンク読み込み ──
-_HISTORY_CHUNK = 50  # 1回に読み込む行数
-if (st.session_state.session_id
-    and not st.session_state.is_streaming
-    and st.session_state.client):
-    # 初回読み込み or さらに読み込む
-    _show_load = (not st.session_state.messages) or st.session_state.history_has_more
-    if _show_load:
-        _btn_label = "さらに読み込む" if st.session_state.messages else "履歴を読み込む"
-        if st.button(_btn_label, key="load_session_history"):
-            try:
-                data = st.session_state.client.get_session_events(
-                    st.session_state.session_id,
-                    limit=_HISTORY_CHUNK,
-                    offset=st.session_state.history_offset,
-                )
-                events = data.get("events", [])
-                new_msgs = process_native_events(events)
-                # 古い履歴を先頭に追加
-                st.session_state.messages = new_msgs + st.session_state.messages
-                st.session_state.history_offset += _HISTORY_CHUNK
-                st.session_state.history_has_more = data.get("has_more", False)
-                st.session_state.history_total_lines = data.get("total_lines", 0)
-                st.rerun()
-            except Exception as e:
-                st.error(f"履歴読み込みエラー: {e}")
-
 # ── チャット履歴表示 ──
 for _msg_idx, msg in enumerate(st.session_state.messages):
     role = msg.get("role", "assistant")
@@ -1552,6 +1525,31 @@ for _msg_idx, msg in enumerate(st.session_state.messages):
                 unsafe_allow_html=True,
             )
 
+
+# ── セッション履歴のチャンク読み込み（チャット末尾に表示） ──
+_HISTORY_CHUNK = 50
+if (st.session_state.session_id
+    and not st.session_state.is_streaming
+    and st.session_state.client):
+    _show_load = (not st.session_state.messages) or st.session_state.history_has_more
+    if _show_load:
+        _btn_label = "さらに読み込む" if st.session_state.messages else "履歴を読み込む"
+        if st.button(_btn_label, key="load_session_history"):
+            try:
+                data = st.session_state.client.get_session_events(
+                    st.session_state.session_id,
+                    limit=_HISTORY_CHUNK,
+                    offset=st.session_state.history_offset,
+                )
+                events = data.get("events", [])
+                new_msgs = process_native_events(events)
+                st.session_state.messages = new_msgs + st.session_state.messages
+                st.session_state.history_offset += _HISTORY_CHUNK
+                st.session_state.history_has_more = data.get("has_more", False)
+                st.session_state.history_total_lines = data.get("total_lines", 0)
+                st.rerun()
+            except Exception as e:
+                st.error(f"履歴読み込みエラー: {e}")
 
 # ── 完了通知（rerun後に発火） ──
 if st.session_state.notify_completion:
