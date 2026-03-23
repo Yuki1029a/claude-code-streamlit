@@ -427,6 +427,7 @@ def init_state():
         "history_offset": 0,                        # 履歴ページネーション: 読み込み済みオフセット
         "history_has_more": False,                   # まだ古い履歴があるか
         "history_total_lines": 0,                    # セッション総行数
+        "pending_images": [],                        # 送信待ち画像 [{data, media_type, name}]
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1696,30 +1697,34 @@ _recovery_streaming = (
     and st.session_state.client
 )
 
-# ── 画像アップロード（サイドバーに配置） ──
-_uploaded_images = None
+# ── 画像アップロード（サイドバーに配置、session_stateに保持） ──
 if not _recovery_streaming and st.session_state.connected:
     with st.sidebar:
         _uploaded_files = st.file_uploader(
             "画像を添付", type=["png", "jpg", "jpeg", "gif", "webp"],
             accept_multiple_files=True, key="img_upload",
         )
-    if _uploaded_files:
-        _uploaded_images = []
-        for uf in _uploaded_files[:4]:
-            raw = uf.read()
-            if len(raw) > 5 * 1024 * 1024:
-                st.warning(f"{uf.name}: 5MBを超えるためスキップ")
-                continue
-            ext = uf.name.rsplit(".", 1)[-1].lower()
-            mt = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
-                  "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/png")
-            _uploaded_images.append({
-                "data": base64.b64encode(raw).decode(),
-                "media_type": mt,
-                "name": uf.name,
-                "raw": raw,
-            })
+        if _uploaded_files:
+            _new_images = []
+            for uf in _uploaded_files[:4]:
+                raw = uf.read()
+                if len(raw) > 5 * 1024 * 1024:
+                    st.warning(f"{uf.name}: 5MBを超えるためスキップ")
+                    continue
+                ext = uf.name.rsplit(".", 1)[-1].lower()
+                mt = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                      "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/png")
+                _new_images.append({
+                    "data": base64.b64encode(raw).decode(),
+                    "media_type": mt,
+                    "name": uf.name,
+                })
+            st.session_state.pending_images = _new_images
+            if _new_images:
+                st.caption(f"{len(_new_images)}枚の画像を添付中")
+        else:
+            # ファイルがクリアされたらpending_imagesもクリア
+            st.session_state.pending_images = []
 
 # ── プロンプト入力 ──
 # ストリーミング中でも入力可能（新プロンプト送信時は前ジョブを自動キャンセル）
@@ -1744,30 +1749,29 @@ if prompt:
         st.session_state.is_streaming = False
         st.session_state.current_job_id = None
 
-    # ユーザーメッセージを追加（画像付きの場合はサムネイルパスも保存）
-    _msg_content = prompt
-    _msg_images_b64 = []
-    if _uploaded_images:
-        _msg_images_b64 = [
-            {"data": img["data"], "media_type": img["media_type"], "name": img["name"]}
-            for img in _uploaded_images
-        ]
+    # session_stateから添付画像を取得（chat_input送信後もrerun前に保持されている）
+    _pending = st.session_state.pending_images or []
+
+    # ユーザーメッセージを追加
     st.session_state.messages.append({
         "role": "user",
-        "content": _msg_content,
+        "content": prompt,
         "tool_blocks": [],
         "cost_info": None,
-        "images": _msg_images_b64,
+        "images": [{"data": img["data"], "media_type": img["media_type"],
+                     "name": img["name"]} for img in _pending],
     })
 
     # ジョブ送信
     try:
         _send_images = None
-        if _uploaded_images:
+        if _pending:
             _send_images = [
                 {"data": img["data"], "media_type": img["media_type"]}
-                for img in _uploaded_images
+                for img in _pending
             ]
+        # 送信後に画像をクリア
+        st.session_state.pending_images = []
         result = st.session_state.client.send_prompt(
             prompt=prompt,
             cwd=cwd,
@@ -2045,34 +2049,14 @@ if prompt or _recovery_streaming:
     st.rerun()
 
 
-# ── スクロールボトムボタン（iframe経由で親ページに注入） ──
-st.components.v1.html("""
-<script>
-(function(){
-    var doc = window.parent.document;
-    // 既存ボタンがあれば削除して再作成（rerun対応）
-    var old = doc.getElementById('scroll-bottom-btn');
-    if(old) old.remove();
-    var btn = doc.createElement('button');
-    btn.id = 'scroll-bottom-btn';
-    btn.textContent = '\\u25BC';
-    btn.style.cssText = 'position:fixed;bottom:160px;right:12px;z-index:999999;width:44px;height:44px;border-radius:50%;background:#333;color:#e0e0e0;border:1px solid #555;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.5);opacity:0.8;';
-    btn.addEventListener('click', function(){
-        // 複数のスクロールターゲットを試す
-        var targets = [
-            doc.querySelector('[data-testid="stMainBlockContainer"]'),
-            doc.querySelector('section.main .block-container'),
-            doc.querySelector('section.main'),
-            doc.documentElement
-        ];
-        for(var i=0;i<targets.length;i++){
-            if(targets[i]){
-                targets[i].scrollTop = targets[i].scrollHeight;
-            }
-        }
-        window.parent.scrollTo(0, doc.body.scrollHeight);
-    });
-    doc.body.appendChild(btn);
-})();
-</script>
-""", height=1)
+# ── スクロールボトムボタン（Streamlit native） ──
+# chat_inputの上にアンカーを置いて、ボタンでそこへジャンプ
+st.markdown('<div id="chat-bottom-anchor"></div>', unsafe_allow_html=True)
+with st.sidebar:
+    if st.button("↓ 最下部へ", key="scroll_bottom", use_container_width=True):
+        st.components.v1.html("""
+        <script>
+        window.parent.document.querySelector('[data-testid="stBottom"]')
+            ?.scrollIntoView({behavior:'smooth'});
+        </script>
+        """, height=0)
