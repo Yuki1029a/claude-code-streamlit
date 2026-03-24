@@ -436,11 +436,9 @@ def init_state():
 init_state()
 
 # ─── is_streaming スタック検出 ─────────────────────────────
-# ストリーミング中に例外が発生すると is_streaming=True のまま残り、
-# 次の実行でキャンセルボタン表示＋入力無効化のフリーズ状態になる。
-# ただし current_job_id がある場合はジョブ復帰の可能性があるため、
-# Flask側のジョブ状態を確認してから判断する。
-if st.session_state.is_streaming:
+# ストリーミング中にワーカースレッドが存在しない場合のみチェック
+# （非ブロッキングリランでは毎回API呼び出ししないよう、ワーカーの有無で判断）
+if st.session_state.is_streaming and not hasattr(st.session_state, "_stream_queue"):
     _stale_job_id = st.session_state.current_job_id
     _job_still_running = False
     if _stale_job_id and st.session_state.client:
@@ -450,7 +448,6 @@ if st.session_state.is_streaming:
         except Exception:
             pass
     if not _job_still_running:
-        # ジョブ完了 or 取得不可 → staleとしてリセット
         st.session_state.is_streaming = False
         st.session_state.cancel_requested = False
 
@@ -1075,6 +1072,17 @@ with st.sidebar:
                     marker = ">" if is_active else ""
                     label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
                     if st.button(label, key=f"job_{job_id}", use_container_width=True):
+                        # ストリーミング中なら前ジョブの状態をクリーンアップ
+                        if st.session_state.is_streaming:
+                            _old_stop = st.session_state.get("_stream_stop")
+                            if _old_stop:
+                                _old_stop.set()
+                            for _k in ("_stream_queue", "_stream_stop", "_stream_text",
+                                       "_stream_tools", "_stream_pending_tool",
+                                       "_stream_all_events", "_stream_errors",
+                                       "_stream_cost_info", "_stream_done"):
+                                st.session_state.pop(_k, None)
+                            st.session_state.is_streaming = False
                         # 即座に切替（イベント取得なし）
                         st.session_state.messages = []
                         st.session_state.history_offset = 0
@@ -1108,6 +1116,17 @@ with st.sidebar:
                     label = f"{'>' if is_current else '>'} {time_str} {preview}"
                     if st.button(label, key=f"pcsess_{sid}", use_container_width=True,
                                  help=f"{sid[:8]} | {line_count}行"):
+                        # ストリーミング中ならクリーンアップ
+                        if st.session_state.is_streaming:
+                            _old_stop = st.session_state.get("_stream_stop")
+                            if _old_stop:
+                                _old_stop.set()
+                            for _k in ("_stream_queue", "_stream_stop", "_stream_text",
+                                       "_stream_tools", "_stream_pending_tool",
+                                       "_stream_all_events", "_stream_errors",
+                                       "_stream_cost_info", "_stream_done"):
+                                st.session_state.pop(_k, None)
+                            st.session_state.is_streaming = False
                         # 即座に切替（イベント取得なし）
                         add_session(sid)
                         st.session_state.session_id = sid
@@ -1200,6 +1219,17 @@ with st.sidebar:
                     marker = "> " if is_active else ""
                     label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
                     if st.button(label, key=f"job_{job_id}", use_container_width=True):
+                        # ストリーミング中なら前ジョブの状態をクリーンアップ
+                        if st.session_state.is_streaming:
+                            _old_stop = st.session_state.get("_stream_stop")
+                            if _old_stop:
+                                _old_stop.set()
+                            for _k in ("_stream_queue", "_stream_stop", "_stream_text",
+                                       "_stream_tools", "_stream_pending_tool",
+                                       "_stream_all_events", "_stream_errors",
+                                       "_stream_cost_info", "_stream_done"):
+                                st.session_state.pop(_k, None)
+                            st.session_state.is_streaming = False
                         # 即座に切替（イベント取得なし）
                         st.session_state.messages = []
                         st.session_state.history_offset = 0
@@ -1300,7 +1330,7 @@ with st.sidebar:
             )
             fix_use_chrome = st.checkbox("Chromeで視覚確認を含める", value=True, key="fix_chrome")
             if st.button("修正リクエスト送信", use_container_width=True,
-                         disabled=st.session_state.is_streaming or not fix_request):
+                         disabled=not fix_request):
                 # 修正プロンプトを構築
                 fix_prompt = f"以下の修正を行ってください:\n\n{fix_request}"
                 if fix_use_chrome:
@@ -1344,7 +1374,7 @@ with st.sidebar:
                 key="fix_request_mobile",
             )
             if st.button("送信", use_container_width=True,
-                         disabled=st.session_state.is_streaming or not fix_request_m,
+                         disabled=not fix_request_m,
                          key="fix_send_mobile"):
                 fix_prompt = f"以下の修正を行ってください:\n\n{fix_request_m}\n\n修正後はChromeブラウザで動作を視覚的に確認してください。"
                 cwd = st.session_state.active_job_cwd or st.session_state.selected_dir
@@ -1610,12 +1640,23 @@ if st.session_state.notify_completion:
 # ── ストリーミング中のキャンセルボタン ──
 if st.session_state.is_streaming:
     if st.button("キャンセル", type="primary", use_container_width=True):
-        st.session_state.cancel_requested = True
+        # サーバーにキャンセル要求
         if st.session_state.current_job_id and st.session_state.client:
             try:
                 st.session_state.client.cancel_job(st.session_state.current_job_id)
             except Exception:
                 pass
+        # ワーカースレッド停止 & ストリーム状態クリア
+        _old_stop = st.session_state.get("_stream_stop")
+        if _old_stop:
+            _old_stop.set()
+        for _k in ("_stream_queue", "_stream_stop", "_stream_text",
+                    "_stream_tools", "_stream_pending_tool", "_stream_all_events",
+                    "_stream_errors", "_stream_cost_info", "_stream_done"):
+            st.session_state.pop(_k, None)
+        st.session_state.is_streaming = False
+        st.session_state.cancel_requested = False
+        st.rerun()
 
 
 # ── ジョブ自動復帰（ブラウザ再接続時） ──
@@ -1691,14 +1732,14 @@ if (st.session_state.connected
 
 # ── 復帰ストリーミング（実行中ジョブへの再接続） ──
 # is_streaming=True かつ current_job_id がある場合、ジョブに再接続する
-_recovery_streaming = (
+_is_active_streaming = (
     st.session_state.is_streaming
     and st.session_state.current_job_id
     and st.session_state.client
 )
 
 # ── 画像アップロード（サイドバーに配置、session_stateに保持） ──
-if not _recovery_streaming and st.session_state.connected:
+if st.session_state.connected:
     with st.sidebar:
         _uploaded_files = st.file_uploader(
             "画像を添付", type=["png", "jpg", "jpeg", "gif", "webp"],
@@ -1727,11 +1768,8 @@ if not _recovery_streaming and st.session_state.connected:
             st.session_state.pending_images = []
 
 # ── プロンプト入力 ──
-# ストリーミング中でも入力可能（新プロンプト送信時は前ジョブを自動キャンセル）
-if not _recovery_streaming:
-    prompt = st.chat_input("プロンプトを入力...")
-else:
-    prompt = None
+# ストリーミング中でも常に入力可能（前ジョブはサーバーで継続）
+prompt = st.chat_input("プロンプトを入力...")
 
 if prompt:
     if not st.session_state.connected or not st.session_state.client:
@@ -1743,9 +1781,23 @@ if prompt:
         st.error("作業ディレクトリを選択してください")
         st.stop()
 
-    # ストリーミング中なら前のジョブはサーバーで継続実行（キャンセルしない）
-    # UIだけ新しいジョブに切り替える
-    if st.session_state.is_streaming and st.session_state.current_job_id:
+    # ストリーミング中なら前のジョブのワーカーを停止（ジョブ自体はサーバーで継続）
+    _was_streaming = st.session_state.is_streaming
+    if _was_streaming and st.session_state.current_job_id:
+        _old_stop = st.session_state.get("_stream_stop")
+        if _old_stop:
+            _old_stop.set()
+        # 前ジョブの蓄積イベントからメッセージを保存
+        _old_events = st.session_state.get("_stream_all_events", [])
+        if _old_events:
+            _old_msgs = process_events(_old_events)
+            if _old_msgs:
+                st.session_state.messages.extend(_old_msgs)
+        # ストリーム状態をクリア
+        for _k in ("_stream_queue", "_stream_stop", "_stream_text",
+                    "_stream_tools", "_stream_pending_tool", "_stream_all_events",
+                    "_stream_errors", "_stream_cost_info", "_stream_done"):
+            st.session_state.pop(_k, None)
         st.session_state.is_streaming = False
         st.session_state.current_job_id = None
 
@@ -1792,243 +1844,235 @@ if prompt:
         st.error(f"プロンプト送信エラー: {e}")
         st.stop()
 
-if prompt or _recovery_streaming:
-    job_id = st.session_state.current_job_id
-
-    # ─── SSEストリーミング（バックグラウンドスレッド + ポーリング）───
-    event_queue = queue.Queue()
-    stop_event = threading.Event()
-
-    worker = threading.Thread(
+# ── ストリーミング開始（新プロンプト送信時のワーカー起動） ──
+if prompt and st.session_state.is_streaming and not hasattr(st.session_state, "_stream_queue"):
+    # 新ジョブのワーカースレッド開始
+    _eq = queue.Queue()
+    _se = threading.Event()
+    _w = threading.Thread(
         target=stream_worker,
-        args=(st.session_state.client, job_id, event_queue, stop_event),
+        args=(st.session_state.client, st.session_state.current_job_id, _eq, _se),
         daemon=True,
     )
-    worker.start()
+    _w.start()
+    st.session_state._stream_queue = _eq
+    st.session_state._stream_stop = _se
+    st.session_state._stream_text = ""
+    st.session_state._stream_tools = []
+    st.session_state._stream_pending_tool = None
+    st.session_state._stream_all_events = []
+    st.session_state._stream_errors = []
+    st.session_state._stream_cost_info = None
+    st.session_state._stream_done = False
+    st.session_state.is_streaming = True
+    st.rerun()
 
-    # ストリーミング中の表示エリア
-    if prompt:
-        with st.chat_message("user"):
-            st.markdown(f"> {prompt}")
-    elif _recovery_streaming:
-        st.info("実行中のジョブに再接続しました")
+# ── リカバリー: ページリロード時に実行中ジョブに再接続 ──
+if (_is_active_streaming
+    and not hasattr(st.session_state, "_stream_queue")):
+    # ワーカースレッドが存在しない → 再接続
+    _eq = queue.Queue()
+    _se = threading.Event()
+    _w = threading.Thread(
+        target=stream_worker,
+        args=(st.session_state.client, st.session_state.current_job_id, _eq, _se),
+        daemon=True,
+    )
+    _w.start()
+    st.session_state._stream_queue = _eq
+    st.session_state._stream_stop = _se
+    if not hasattr(st.session_state, "_stream_text"):
+        st.session_state._stream_text = ""
+        st.session_state._stream_tools = []
+        st.session_state._stream_pending_tool = None
+        st.session_state._stream_all_events = []
+        st.session_state._stream_errors = []
+        st.session_state._stream_cost_info = None
+        st.session_state._stream_done = False
 
-    streaming_container = st.chat_message("assistant")
-    status_placeholder = st.empty()
-    text_placeholder = streaming_container.empty()
-    tool_container = streaming_container.container()
+# ── 非ブロッキング・ストリーミング表示 ──
+if st.session_state.is_streaming and hasattr(st.session_state, "_stream_queue"):
+    _sq = st.session_state._stream_queue
+    _stream_done = st.session_state._stream_done
 
-    accumulated_text = ""
-    accumulated_tools = []
-    accumulated_errors = []
-    pending_tool = None
-    cost_info = None
-    all_events = []
-    done = False
+    # キューからイベントを非ブロッキングで全取得
+    if not _stream_done:
+        _batch = []
+        try:
+            while True:
+                _ev = _sq.get_nowait()
+                _batch.append(_ev)
+        except queue.Empty:
+            pass
 
-    try:
-        while not done:
-            # キャンセルチェック
-            if st.session_state.cancel_requested:
-                stop_event.set()
+        for _ev in _batch:
+            if _ev is None:
+                st.session_state._stream_done = True
                 break
 
-            # キューからイベント取得（0.3秒タイムアウト）
-            batch = []
-            try:
-                while True:
-                    ev = event_queue.get_nowait()
-                    batch.append(ev)
-            except queue.Empty:
-                pass
+            st.session_state._stream_all_events.append(_ev)
+            _etype = _ev.get("type", "")
 
-            if not batch:
-                time.sleep(0.3)
-                status_placeholder.caption("応答待機中...")
-                continue
+            if _etype == "system" and _ev.get("subtype") == "init":
+                _sid = _ev.get("session_id")
+                if _sid:
+                    add_session(_sid)
+                    st.session_state.session_id = _sid
+                    _init_cwd = _ev.get("cwd")
+                    if _init_cwd:
+                        st.session_state.session_dirs[_sid] = _init_cwd
 
-            for ev in batch:
-                if ev is None:
-                    done = True
-                    break
+            elif _etype == "stream_event":
+                _inner = _ev.get("event", {})
+                _inner_type = _inner.get("type", "")
+                if _inner_type == "content_block_start":
+                    _cb = _inner.get("content_block", {})
+                    if _cb.get("type") == "tool_use":
+                        _pt = st.session_state._stream_pending_tool
+                        if _pt:
+                            st.session_state._stream_tools.append(_pt)
+                        st.session_state._stream_pending_tool = {
+                            "name": _cb.get("name", "tool"),
+                            "id": _cb.get("id", ""),
+                            "input_str": "",
+                            "result": "",
+                        }
+                elif _inner_type == "content_block_delta":
+                    _delta = _inner.get("delta", {})
+                    if _delta.get("type") == "text_delta":
+                        st.session_state._stream_text += _delta.get("text", "")
+                    elif _delta.get("type") == "input_json_delta":
+                        _pt = st.session_state._stream_pending_tool
+                        if _pt:
+                            _pt["input_str"] += _delta.get("partial_json", "")
 
-                all_events.append(ev)
-                etype = ev.get("type", "")
+            elif _etype == "assistant":
+                if not st.session_state._stream_text:
+                    _msg = _ev.get("message", {})
+                    for _block in _msg.get("content", []):
+                        if _block.get("type") == "text":
+                            st.session_state._stream_text += _block.get("text", "")
 
-                # system init
-                if etype == "system" and ev.get("subtype") == "init":
-                    sid = ev.get("session_id")
-                    if sid:
-                        add_session(sid)
-                        st.session_state.session_id = sid
-                        # セッション→ディレクトリ対応を保存
-                        init_cwd = ev.get("cwd")
-                        if init_cwd:
-                            st.session_state.session_dirs[sid] = init_cwd
+            elif _etype == "user":
+                _msg = _ev.get("message", {})
+                for _block in _msg.get("content", []):
+                    if _block.get("type") == "tool_result":
+                        _content = _block.get("content", "")
+                        if isinstance(_content, list):
+                            _content = "\n".join(
+                                _item.get("text", "")
+                                for _item in _content
+                                if isinstance(_item, dict)
+                            )
+                        _pt = st.session_state._stream_pending_tool
+                        if _pt:
+                            _pt["result"] = _content
+                            st.session_state._stream_tools.append(_pt)
+                            st.session_state._stream_pending_tool = None
 
-                # stream_event
-                elif etype == "stream_event":
-                    inner = ev.get("event", {})
-                    inner_type = inner.get("type", "")
+            elif _etype == "result":
+                _sid = _ev.get("session_id")
+                if _sid:
+                    add_session(_sid)
+                    st.session_state.session_id = _sid
+                _cost = _ev.get("cost_usd")
+                _usage = _ev.get("usage", {})
+                _parts = []
+                if _cost is not None:
+                    _parts.append(f"${_cost:.4f}")
+                if _usage.get("input_tokens"):
+                    _parts.append(f"in:{_usage['input_tokens']}")
+                if _usage.get("output_tokens"):
+                    _parts.append(f"out:{_usage['output_tokens']}")
+                if _parts:
+                    st.session_state._stream_cost_info = " | ".join(_parts)
 
-                    if inner_type == "content_block_start":
-                        cb = inner.get("content_block", {})
-                        if cb.get("type") == "text":
+            elif _etype in ("error", "stderr"):
+                _text = _ev.get("text", "")
+                if _text:
+                    st.session_state._stream_errors.append(_text)
+
+            elif _etype == "done":
+                st.session_state._stream_done = True
+                break
+
+    # ── 表示 ──
+    _s_text = st.session_state._stream_text
+    _s_tools = st.session_state._stream_tools
+    _s_errors = st.session_state._stream_errors
+    _s_done = st.session_state._stream_done
+    _s_cost = st.session_state._stream_cost_info
+    _s_pending = st.session_state._stream_pending_tool
+
+    with st.chat_message("assistant"):
+        # ツール表示
+        for _tool in _s_tools:
+            with st.expander(f"{_tool['name']}", expanded=False):
+                if _tool.get("input_str"):
+                    st.code(parse_tool_input_display(_tool["input_str"]), language="json")
+                _fp = extract_file_path(_tool.get("input_str", ""))
+                if _fp:
+                    _fname = get_path_basename(_fp)
+                    if is_image_path(_fp):
+                        st.markdown(f"**{_fname}**")
+                        try:
+                            _img_bytes, _mime = st.session_state.client.get_file_bytes(_fp)
+                            if _img_bytes:
+                                st.image(_img_bytes, caption=_fname, use_container_width=True)
+                        except Exception:
                             pass
-                        elif cb.get("type") == "tool_use":
-                            if pending_tool:
-                                accumulated_tools.append(pending_tool)
-                            pending_tool = {
-                                "name": cb.get("name", "tool"),
-                                "id": cb.get("id", ""),
-                                "input_str": "",
-                                "result": "",
-                            }
-                            status_placeholder.caption(f"{cb.get('name', 'tool')}...")
+                    else:
+                        st.markdown(f"**{_fname}**")
+                if _tool.get("result"):
+                    _r = _tool["result"]
+                    if len(_r) > 500:
+                        st.text_area("r", value=_r, height=150, disabled=True,
+                                     label_visibility="collapsed",
+                                     key=f"sr_{_tool.get('id', '')}_{hash(_r[:100])}")
+                    else:
+                        st.code(_r, language=None)
 
-                    elif inner_type == "content_block_delta":
-                        delta = inner.get("delta", {})
-                        if delta.get("type") == "text_delta":
-                            accumulated_text += delta.get("text", "")
-                            text_placeholder.markdown(accumulated_text + " ▌")
-                            status_placeholder.empty()
-                        elif delta.get("type") == "input_json_delta":
-                            if pending_tool:
-                                pending_tool["input_str"] += delta.get("partial_json", "")
+        # 実行中のツール名
+        if _s_pending and not _s_done:
+            st.caption(f"{_s_pending['name']}...")
 
-                # assistant (完成メッセージ)
-                # ストリームデルタの確認版 → 表示用にはスキップ
-                # （all_eventsに記録済みなのでprocess_eventsが最終メッセージ構築時に使う）
-                elif etype == "assistant":
-                    if not accumulated_text:
-                        # デルタなし（ポーリングフォールバック）→ 完成メッセージからテキスト取得
-                        msg = ev.get("message", {})
-                        for block in msg.get("content", []):
-                            if block.get("type") == "text":
-                                accumulated_text += block.get("text", "")
-                        if accumulated_text:
-                            text_placeholder.markdown(accumulated_text)
-
-                # user = tool_result
-                elif etype == "user":
-                    msg = ev.get("message", {})
-                    for block in msg.get("content", []):
-                        if block.get("type") == "tool_result":
-                            content = block.get("content", "")
-                            if isinstance(content, list):
-                                content = "\n".join(
-                                    item.get("text", "")
-                                    for item in content
-                                    if isinstance(item, dict)
-                                )
-                            if pending_tool:
-                                pending_tool["result"] = content
-                                accumulated_tools.append(pending_tool)
-                                # ツール表示
-                                with tool_container.expander(
-                                    f"{pending_tool['name']}", expanded=False
-                                ):
-                                    if pending_tool["input_str"]:
-                                        st.code(
-                                            parse_tool_input_display(pending_tool["input_str"]),
-                                            language="json",
-                                        )
-                                    fp = extract_file_path(pending_tool["input_str"])
-                                    if fp:
-                                        fname = get_path_basename(fp)
-                                        if is_image_path(fp):
-                                            st.markdown(f"**{fname}**")
-                                            try:
-                                                img_bytes, mime = st.session_state.client.get_file_bytes(fp)
-                                                if img_bytes:
-                                                    st.image(img_bytes, caption=fname, use_container_width=True)
-                                            except Exception:
-                                                pass
-                                        else:
-                                            st.markdown(f"**{fname}**")
-                                    if content:
-                                        if len(content) > 500:
-                                            st.text_area(
-                                                "r", value=content, height=150,
-                                                disabled=True, label_visibility="collapsed",
-                                                key=f"stream_result_{pending_tool['id']}_{hash(content[:100])}",
-                                            )
-                                        else:
-                                            st.code(content, language=None)
-                                pending_tool = None
-
-                # result (コスト)
-                elif etype == "result":
-                    sid = ev.get("session_id")
-                    if sid:
-                        add_session(sid)
-                        st.session_state.session_id = sid
-                    cost = ev.get("cost_usd")
-                    usage = ev.get("usage", {})
-                    parts = []
-                    if cost is not None:
-                        parts.append(f"${cost:.4f}")
-                    if usage.get("input_tokens"):
-                        parts.append(f"in:{usage['input_tokens']}")
-                    if usage.get("output_tokens"):
-                        parts.append(f"out:{usage['output_tokens']}")
-                    if parts:
-                        cost_info = " | ".join(parts)
-
-                # error / stderr
-                elif etype in ("error", "stderr"):
-                    text = ev.get("text", "")
-                    if text:
-                        accumulated_errors.append(text)
-                        streaming_container.markdown(
-                            f'<div class="error-msg">[!] {text}</div>',
-                            unsafe_allow_html=True,
-                        )
-
-                # done
-                elif etype == "done":
-                    done = True
-                    break
-
-    finally:
-        # 例外が発生しても必ずクリーンアップする
-        status_placeholder.empty()
-        text_placeholder.markdown(accumulated_text)  # カーソル除去
-
-        # pending_toolを片付ける
-        if pending_tool:
-            accumulated_tools.append(pending_tool)
-
-        # コスト表示
-        if cost_info:
-            streaming_container.markdown(
-                f'<div class="cost-info">{cost_info}</div>',
-                unsafe_allow_html=True,
-            )
-
-        # エラーがあればテキストに含める
-        if accumulated_errors:
-            error_text = "\n".join(f"[!] {e}" for e in accumulated_errors)
-            if accumulated_text:
-                accumulated_text += "\n\n" + error_text
+        # テキスト表示
+        if _s_text:
+            if _s_done:
+                st.markdown(_s_text)
             else:
-                accumulated_text = error_text
+                st.markdown(_s_text + " ▌")
 
-        # メッセージ履歴に追加（all_eventsから一括変換 — 重複なし）
-        structured_msgs = process_events(all_events)
-        if structured_msgs:
-            st.session_state.messages.extend(structured_msgs)
-        elif accumulated_text or accumulated_tools:
-            # フォールバック: process_eventsが空の場合は手動保存
+        # エラー
+        for _err in _s_errors:
+            st.markdown(f'<div class="error-msg">[!] {_err}</div>', unsafe_allow_html=True)
+
+        # コスト
+        if _s_cost and _s_done:
+            st.markdown(f'<div class="cost-info">{_s_cost}</div>', unsafe_allow_html=True)
+
+    # ── 完了処理 or 継続リラン ──
+    if _s_done:
+        # メッセージ履歴に追加
+        _all_ev = st.session_state._stream_all_events
+        _structured = process_events(_all_ev)
+        if _structured:
+            st.session_state.messages.extend(_structured)
+        elif _s_text:
             st.session_state.messages.append({
                 "role": "assistant",
-                "content": accumulated_text,
-                "tool_blocks": accumulated_tools,
-                "cost_info": cost_info,
+                "content": _s_text,
+                "tool_blocks": _s_tools,
+                "cost_info": _s_cost,
             })
 
+        # クリーンアップ
         st.session_state.is_streaming = False
         st.session_state.cancel_requested = False
+        for _k in ("_stream_queue", "_stream_stop", "_stream_text",
+                    "_stream_tools", "_stream_pending_tool", "_stream_all_events",
+                    "_stream_errors", "_stream_cost_info", "_stream_done"):
+            st.session_state.pop(_k, None)
 
         # ジョブ履歴更新
         try:
@@ -2036,17 +2080,21 @@ if prompt or _recovery_streaming:
         except Exception:
             pass
 
-        # 完了通知フラグをセット（rerun後のメインレンダーで発火）
-        _last_text = ""
-        if structured_msgs:
-            for _m in reversed(structured_msgs):
+        # 完了通知
+        _notify_text = ""
+        if _structured:
+            for _m in reversed(_structured):
                 if _m.get("content"):
-                    _last_text = _m["content"]
+                    _notify_text = _m["content"]
                     break
-        _notify_preview = (_last_text or accumulated_text or "")[:60].replace("\n", " ")
+        _notify_preview = (_notify_text or _s_text or "")[:60].replace("\n", " ")
         st.session_state.notify_completion = _notify_preview or "タスク完了"
 
-    st.rerun()
+        st.rerun()
+    else:
+        # まだ完了していない → 短い待機後にリラン（UIは操作可能）
+        time.sleep(0.3)
+        st.rerun()
 
 
 # ── スクロールボトムボタン（Streamlit native） ──
