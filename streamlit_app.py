@@ -2177,24 +2177,42 @@ with st.sidebar:
         st.components.v1.html("""
         <script>
         (function(){
-            var doc = window.parent.document;
-            // chat_input付近へスクロール（複数セレクタで確実に）
-            var targets = [
-                doc.querySelector('[data-testid="stChatInput"]'),
-                doc.querySelector('[data-testid="stBottom"]'),
-                doc.querySelector('[data-testid="stBottomBlockContainer"]'),
-                doc.querySelector('.stChatInput'),
-            ];
-            for (var i = 0; i < targets.length; i++) {
-                if (targets[i]) {
-                    targets[i].scrollIntoView({behavior:'smooth', block:'end'});
-                    return;
+            try {
+                var doc = window.parent.document;
+                // Streamlitのメインスクロールコンテナを総当たりで探す
+                var selectors = [
+                    'section.main',
+                    '[data-testid="stMain"]',
+                    '[data-testid="stAppViewContainer"]',
+                    '.main .block-container',
+                    '[data-testid="stVerticalBlock"]',
+                ];
+                // まずセレクタで見つかる要素を最下部へ
+                for (var i = 0; i < selectors.length; i++) {
+                    var el = doc.querySelector(selectors[i]);
+                    if (el && el.scrollHeight > el.clientHeight) {
+                        el.scrollTop = el.scrollHeight;
+                    }
                 }
-            }
-            // フォールバック: メインコンテナの最下部へ
-            var main = doc.querySelector('[data-testid="stAppViewContainer"]')
-                     || doc.querySelector('.main');
-            if (main) main.scrollTop = main.scrollHeight;
+                // 全スクロール可能要素を走査して最も大きいものをスクロール
+                var all = doc.querySelectorAll('*');
+                var best = null, bestH = 0;
+                for (var j = 0; j < all.length; j++) {
+                    var e = all[j];
+                    var over = window.parent.getComputedStyle(e).overflowY;
+                    if ((over === 'auto' || over === 'scroll') && e.scrollHeight > e.clientHeight + 50) {
+                        if (e.scrollHeight > bestH) {
+                            bestH = e.scrollHeight;
+                            best = e;
+                        }
+                    }
+                }
+                if (best) {
+                    best.scrollTop = best.scrollHeight;
+                }
+                // 最終フォールバック
+                window.parent.scrollTo(0, 999999);
+            } catch(e) {}
         })();
         </script>
         """, height=0)
