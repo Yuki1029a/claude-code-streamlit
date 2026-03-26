@@ -428,6 +428,7 @@ def init_state():
         "history_has_more": False,                   # まだ古い履歴があるか
         "history_total_lines": 0,                    # セッション総行数
         "pending_images": [],                        # 送信待ち画像 [{data, media_type, name}]
+        "new_session_requested": False,              # 新規セッション要求フラグ（process_eventsの復元防止）
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -785,7 +786,7 @@ def process_events(events: list) -> list:
                     "role": "assistant",
                     "content": current_text,
                     "tool_blocks": current_tools[:],
-                    "cost_info": " | ".join(cost_parts) if cost_parts else None,
+                    "cost_info": (" | ".join(cost_parts) + (f" | sid:{sid[:8]}" if sid else "")) if cost_parts else (f"sid:{sid[:8]}" if sid else None),
                 })
                 current_text = ""
                 current_tools = []
@@ -987,13 +988,29 @@ with st.sidebar:
             if _has_active_session:
                 _active_cwd = st.session_state.active_job_cwd or st.session_state.selected_dir
                 _active_label = get_path_basename(_active_cwd) if _active_cwd else "不明"
-                st.caption(f"セッション中: {_active_label}")
+                _sid_short = st.session_state.session_id[:8] if st.session_state.session_id else "---"
+                st.caption(f"セッション中: {_active_label} | `{_sid_short}`")
                 if st.button("新規セッション", use_container_width=True, key="mob_new_session"):
+                    # ストリーミング中ならワーカースレッドを停止
+                    if st.session_state.is_streaming:
+                        _old_stop = st.session_state.get("_stream_stop")
+                        if _old_stop:
+                            _old_stop.set()
+                        for _k in ("_stream_queue", "_stream_stop", "_stream_text",
+                                    "_stream_tools", "_stream_pending_tool",
+                                    "_stream_all_events", "_stream_errors",
+                                    "_stream_cost_info", "_stream_done"):
+                            st.session_state.pop(_k, None)
+                        st.session_state.is_streaming = False
+                        st.session_state.cancel_requested = False
                     st.session_state.active_job_cwd = None
                     st.session_state.session_id = None
                     st.session_state.messages = []
                     st.session_state.current_job_id = None
                     st.session_state.screenshot_bytes = None
+                    st.session_state.history_offset = 0
+                    st.session_state.history_has_more = False
+                    st.session_state.new_session_requested = True
                     st.rerun()
             else:
                 # 新規セッション: フォルダ選択可能
@@ -1169,14 +1186,30 @@ with st.sidebar:
                 # セッション中: ディレクトリは固定表示（変更不可）
                 _active_cwd = st.session_state.active_job_cwd or st.session_state.selected_dir
                 _active_label = get_path_basename(_active_cwd) if _active_cwd else "不明"
+                _sid_short = st.session_state.session_id[:8] if st.session_state.session_id else "---"
                 st.subheader("セッション中")
-                st.info(f"**{_active_label}**")
+                st.info(f"**{_active_label}** | `{_sid_short}`")
                 if st.button("新規セッション", use_container_width=True, key="desk_new_session"):
+                    # ストリーミング中ならワーカースレッドを停止
+                    if st.session_state.is_streaming:
+                        _old_stop = st.session_state.get("_stream_stop")
+                        if _old_stop:
+                            _old_stop.set()
+                        for _k in ("_stream_queue", "_stream_stop", "_stream_text",
+                                    "_stream_tools", "_stream_pending_tool",
+                                    "_stream_all_events", "_stream_errors",
+                                    "_stream_cost_info", "_stream_done"):
+                            st.session_state.pop(_k, None)
+                        st.session_state.is_streaming = False
+                        st.session_state.cancel_requested = False
                     st.session_state.active_job_cwd = None
                     st.session_state.session_id = None
                     st.session_state.messages = []
                     st.session_state.current_job_id = None
                     st.session_state.screenshot_bytes = None
+                    st.session_state.history_offset = 0
+                    st.session_state.history_has_more = False
+                    st.session_state.new_session_requested = True
                     st.rerun()
             else:
                 # 新規セッション: フォルダ選択可能
@@ -1778,8 +1811,13 @@ if prompt:
 
     cwd = st.session_state.active_job_cwd or st.session_state.selected_dir
     if not cwd:
-        st.error("作業ディレクトリを選択してください")
-        st.stop()
+        # フォールバック: flat_dirsの先頭を使用
+        if st.session_state.flat_dirs:
+            cwd = st.session_state.flat_dirs[0]
+            st.session_state.selected_dir = cwd
+        else:
+            st.error("作業ディレクトリを選択してください")
+            st.stop()
 
     # ストリーミング中なら前のジョブのワーカーを停止（ジョブ自体はサーバーで継続）
     _was_streaming = st.session_state.is_streaming
@@ -1918,9 +1956,13 @@ if st.session_state.is_streaming and hasattr(st.session_state, "_stream_queue"):
                 if _sid:
                     add_session(_sid)
                     st.session_state.session_id = _sid
+                    st.session_state.new_session_requested = False
                     _init_cwd = _ev.get("cwd")
                     if _init_cwd:
                         st.session_state.session_dirs[_sid] = _init_cwd
+                        # 新規セッションの場合、active_job_cwdも設定
+                        if not st.session_state.active_job_cwd:
+                            st.session_state.active_job_cwd = _init_cwd
 
             elif _etype == "stream_event":
                 _inner = _ev.get("event", {})
@@ -2047,9 +2089,12 @@ if st.session_state.is_streaming and hasattr(st.session_state, "_stream_queue"):
         for _err in _s_errors:
             st.markdown(f'<div class="error-msg">[!] {_err}</div>', unsafe_allow_html=True)
 
-        # コスト
+        # コスト + セッションID
         if _s_cost and _s_done:
-            st.markdown(f'<div class="cost-info">{_s_cost}</div>', unsafe_allow_html=True)
+            _sid_tag = ""
+            if st.session_state.session_id:
+                _sid_tag = f" | sid:{st.session_state.session_id[:8]}"
+            st.markdown(f'<div class="cost-info">{_s_cost}{_sid_tag}</div>', unsafe_allow_html=True)
 
     # ── 完了処理 or 継続リラン ──
     if _s_done:
