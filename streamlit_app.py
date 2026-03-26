@@ -508,6 +508,14 @@ def format_timestamp(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=JST).strftime("%H:%M")
 
 
+def _validate_session_id(session_id: str) -> bool:
+    """session_idがUUID形式であることを検証"""
+    if not session_id:
+        return False
+    import re
+    return bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', session_id, re.IGNORECASE))
+
+
 def add_session(sid: str):
     """セッションIDをリストに追加（重複なし）"""
     if sid and sid not in st.session_state.sessions:
@@ -1163,6 +1171,33 @@ with st.sidebar:
             else:
                 st.caption("ボタンで履歴取得")
 
+            # ── モバイル: セッションID手動入力 ──
+            with st.expander("ID指定で復帰"):
+                _manual_sid = st.text_input("セッションID", key="mob_manual_sid",
+                                            placeholder="UUID を貼り付け")
+                if st.button("接続", key="mob_manual_connect", use_container_width=True,
+                             disabled=not _manual_sid):
+                    _sid = _manual_sid.strip()
+                    if _validate_session_id(_sid):
+                        if st.session_state.is_streaming:
+                            _old_stop = st.session_state.get("_stream_stop")
+                            if _old_stop:
+                                _old_stop.set()
+                            for _k in ("_stream_queue", "_stream_stop", "_stream_text",
+                                        "_stream_tools", "_stream_pending_tool",
+                                        "_stream_all_events", "_stream_errors",
+                                        "_stream_cost_info", "_stream_done"):
+                                st.session_state.pop(_k, None)
+                            st.session_state.is_streaming = False
+                        add_session(_sid)
+                        st.session_state.session_id = _sid
+                        st.session_state.messages = []
+                        st.session_state.history_offset = 0
+                        st.session_state.history_has_more = False
+                        st.rerun()
+                    else:
+                        st.error("無効なUUID形式です")
+
         else:
             # ─────────────────────────────────────
             # デスクトップサイドバー
@@ -1351,6 +1386,33 @@ with st.sidebar:
                 st.caption("セッションが見つかりません")
             else:
                 st.caption("ボタンで一覧を取得")
+
+            # ── デスクトップ: セッションID手動入力 ──
+            with st.expander("ID指定で復帰"):
+                _manual_sid_d = st.text_input("セッションID", key="desk_manual_sid",
+                                              placeholder="UUID を貼り付け")
+                if st.button("接続", key="desk_manual_connect", use_container_width=True,
+                             disabled=not _manual_sid_d):
+                    _sid = _manual_sid_d.strip()
+                    if _validate_session_id(_sid):
+                        if st.session_state.is_streaming:
+                            _old_stop = st.session_state.get("_stream_stop")
+                            if _old_stop:
+                                _old_stop.set()
+                            for _k in ("_stream_queue", "_stream_stop", "_stream_text",
+                                        "_stream_tools", "_stream_pending_tool",
+                                        "_stream_all_events", "_stream_errors",
+                                        "_stream_cost_info", "_stream_done"):
+                                st.session_state.pop(_k, None)
+                            st.session_state.is_streaming = False
+                        add_session(_sid)
+                        st.session_state.session_id = _sid
+                        st.session_state.messages = []
+                        st.session_state.history_offset = 0
+                        st.session_state.history_has_more = False
+                        st.rerun()
+                    else:
+                        st.error("無効なUUID形式です")
 
             # ── 修正リクエスト ──
             st.divider()
