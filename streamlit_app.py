@@ -1633,12 +1633,37 @@ if (st.session_state.session_id
 if st.session_state.notify_completion:
     _np = st.session_state.notify_completion.replace("'", "\\'")
     st.session_state.notify_completion = None  # 1回だけ発火
+    # 親フレームで通知音を鳴らす（iframe内のAudioContextはsuspendされやすいため）
     st.components.v1.html(f"""
     <script>
     (function() {{
-        // 通知音（Web Audio API）
-        try {{
-            var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        var doc = window.parent.document;
+        var win = window.parent;
+
+        // 親フレームで音を鳴らす（AudioContextポリシー回避）
+        function playNotify() {{
+            try {{
+                // 親フレームに共有AudioContextを保持（再利用で確実に鳴る）
+                if (!win._claudeAudioCtx) {{
+                    win._claudeAudioCtx = new (win.AudioContext || win.webkitAudioContext)();
+                }}
+                var ctx = win._claudeAudioCtx;
+                // suspended状態なら復帰を試みる
+                if (ctx.state === 'suspended') {{
+                    ctx.resume().then(function() {{ doBeep(ctx); }});
+                }} else {{
+                    doBeep(ctx);
+                }}
+            }} catch(e) {{
+                // フォールバック: iframe内で試行
+                try {{
+                    var ctx2 = new (window.AudioContext || window.webkitAudioContext)();
+                    ctx2.resume().then(function() {{ doBeep(ctx2); }});
+                }} catch(e2) {{}}
+            }}
+        }}
+
+        function doBeep(ctx) {{
             function beep(freq, start, dur) {{
                 var o = ctx.createOscillator();
                 var g = ctx.createGain();
@@ -1652,19 +1677,23 @@ if st.session_state.notify_completion:
             }}
             beep(880, 0, 0.15);
             beep(1100, 0.18, 0.2);
-        }} catch(e) {{}}
-
-        // ブラウザ通知
-        if ('Notification' in window) {{
-            if (Notification.permission === 'granted') {{
-                new Notification('Claude Terminal', {{
-                    body: '{_np}',
-                    tag: 'claude-done'
-                }});
-            }} else if (Notification.permission !== 'denied') {{
-                Notification.requestPermission();
-            }}
         }}
+
+        playNotify();
+
+        // ブラウザ通知（親フレームで発火）
+        try {{
+            if ('Notification' in win) {{
+                if (win.Notification.permission === 'granted') {{
+                    new win.Notification('Claude Terminal', {{
+                        body: '{_np}',
+                        tag: 'claude-done'
+                    }});
+                }} else if (win.Notification.permission !== 'denied') {{
+                    win.Notification.requestPermission();
+                }}
+            }}
+        }} catch(e) {{}}
     }})();
     </script>
     """, height=0)
@@ -2142,14 +2171,30 @@ if st.session_state.is_streaming and hasattr(st.session_state, "_stream_queue"):
         st.rerun()
 
 
-# ── スクロールボトムボタン（Streamlit native） ──
-# chat_inputの上にアンカーを置いて、ボタンでそこへジャンプ
-st.markdown('<div id="chat-bottom-anchor"></div>', unsafe_allow_html=True)
+# ── スクロールボトムボタン ──
 with st.sidebar:
     if st.button("↓ 最下部へ", key="scroll_bottom", use_container_width=True):
         st.components.v1.html("""
         <script>
-        window.parent.document.querySelector('[data-testid="stBottom"]')
-            ?.scrollIntoView({behavior:'smooth'});
+        (function(){
+            var doc = window.parent.document;
+            // chat_input付近へスクロール（複数セレクタで確実に）
+            var targets = [
+                doc.querySelector('[data-testid="stChatInput"]'),
+                doc.querySelector('[data-testid="stBottom"]'),
+                doc.querySelector('[data-testid="stBottomBlockContainer"]'),
+                doc.querySelector('.stChatInput'),
+            ];
+            for (var i = 0; i < targets.length; i++) {
+                if (targets[i]) {
+                    targets[i].scrollIntoView({behavior:'smooth', block:'end'});
+                    return;
+                }
+            }
+            // フォールバック: メインコンテナの最下部へ
+            var main = doc.querySelector('[data-testid="stAppViewContainer"]')
+                     || doc.querySelector('.main');
+            if (main) main.scrollTop = main.scrollHeight;
+        })();
         </script>
         """, height=0)
