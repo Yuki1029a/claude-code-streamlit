@@ -473,32 +473,7 @@ st.markdown("""
 
 IS_MOBILE = st.query_params.get("dv", "d") == "m"
 
-# ── AudioContext事前unlock（ユーザー操作時にresume） ──
-st.markdown("""
-<script>
-(function(){
-  if (window._claudeAudioReady) return;
-  window._claudeAudioReady = true;
-  function unlock(){
-    try {
-      if (!window._claudeAudioCtx) {
-        window._claudeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      var ctx = window._claudeAudioCtx;
-      if (ctx.state === 'suspended') {
-        ctx.resume();
-      }
-    } catch(e){}
-  }
-  // ユーザー操作時にunlock
-  ['click','touchstart','keydown'].forEach(function(evt){
-    document.addEventListener(evt, unlock, {once: false, passive: true});
-  });
-  // 即座にも試行
-  unlock();
-})();
-</script>
-""", unsafe_allow_html=True)
+# ── AudioContext事前unlock（不要：通知音はst.components.v1.html内で完結） ──
 
 
 # ─── ヘルパー関数 ──────────────────────────────────────────
@@ -1660,47 +1635,45 @@ if (st.session_state.session_id
 if st.session_state.notify_completion:
     _np = st.session_state.notify_completion.replace("'", "\\'").replace("\n", " ")
     st.session_state.notify_completion = None  # 1回だけ発火
-    # st.markdownで直接注入（iframeではなく同一コンテキストで実行）
-    st.markdown(f"""
+    # st.components.v1.htmlでiframe内実行（st.markdownのscriptは実行されないため）
+    st.components.v1.html(f"""
     <script>
     (function() {{
-        // 通知音（事前unlockされたAudioContextを使用）
+        // 通知音（iframe内で完結）
         try {{
-            if (!window._claudeAudioCtx) {{
-                window._claudeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            var ctx = new (window.AudioContext || window.webkitAudioContext)();
+            function beep(freq, start, dur) {{
+                var o = ctx.createOscillator();
+                var g = ctx.createGain();
+                o.connect(g); g.connect(ctx.destination);
+                o.type = 'sine';
+                o.frequency.value = freq;
+                g.gain.setValueAtTime(0.3, ctx.currentTime + start);
+                g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+                o.start(ctx.currentTime + start);
+                o.stop(ctx.currentTime + start + dur);
             }}
-            var ctx = window._claudeAudioCtx;
-            function play() {{
-                function beep(freq, start, dur) {{
-                    var o = ctx.createOscillator();
-                    var g = ctx.createGain();
-                    o.connect(g); g.connect(ctx.destination);
-                    o.type = 'sine';
-                    o.frequency.value = freq;
-                    g.gain.setValueAtTime(0.3, ctx.currentTime + start);
-                    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
-                    o.start(ctx.currentTime + start);
-                    o.stop(ctx.currentTime + start + dur);
-                }}
+            if (ctx.state === 'suspended') {{
+                ctx.resume().then(function() {{
+                    beep(880, 0, 0.15);
+                    beep(1100, 0.18, 0.2);
+                }});
+            }} else {{
                 beep(880, 0, 0.15);
                 beep(1100, 0.18, 0.2);
             }}
-            if (ctx.state === 'suspended') {{
-                ctx.resume().then(play);
-            }} else {{
-                play();
-            }}
-        }} catch(e) {{}}
+        }} catch(e) {{ console.error('Audio error:', e); }}
 
-        // ブラウザ通知
+        // ブラウザ通知（親フレーム経由）
         try {{
-            if ('Notification' in window && Notification.permission === 'granted') {{
-                new Notification('Claude Terminal', {{ body: '{_np}', tag: 'claude-done' }});
+            var win = window.parent || window;
+            if ('Notification' in win && win.Notification.permission === 'granted') {{
+                new win.Notification('Claude Terminal', {{ body: '{_np}', tag: 'claude-done' }});
             }}
         }} catch(e) {{}}
     }})();
     </script>
-    """, unsafe_allow_html=True)
+    """, height=0)
 
 
 # ── ストリーミング中のキャンセルボタン ──
