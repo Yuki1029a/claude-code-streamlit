@@ -473,6 +473,33 @@ st.markdown("""
 
 IS_MOBILE = st.query_params.get("dv", "d") == "m"
 
+# ── AudioContext事前unlock（ユーザー操作時にresume） ──
+st.markdown("""
+<script>
+(function(){
+  if (window._claudeAudioReady) return;
+  window._claudeAudioReady = true;
+  function unlock(){
+    try {
+      if (!window._claudeAudioCtx) {
+        window._claudeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      var ctx = window._claudeAudioCtx;
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+    } catch(e){}
+  }
+  // ユーザー操作時にunlock
+  ['click','touchstart','keydown'].forEach(function(evt){
+    document.addEventListener(evt, unlock, {once: false, passive: true});
+  });
+  // 即座にも試行
+  unlock();
+})();
+</script>
+""", unsafe_allow_html=True)
+
 
 # ─── ヘルパー関数 ──────────────────────────────────────────
 
@@ -1631,72 +1658,49 @@ if (st.session_state.session_id
 
 # ── 完了通知（rerun後に発火） ──
 if st.session_state.notify_completion:
-    _np = st.session_state.notify_completion.replace("'", "\\'")
+    _np = st.session_state.notify_completion.replace("'", "\\'").replace("\n", " ")
     st.session_state.notify_completion = None  # 1回だけ発火
-    # 親フレームで通知音を鳴らす（iframe内のAudioContextはsuspendされやすいため）
-    st.components.v1.html(f"""
+    # st.markdownで直接注入（iframeではなく同一コンテキストで実行）
+    st.markdown(f"""
     <script>
     (function() {{
-        var doc = window.parent.document;
-        var win = window.parent;
-
-        // 親フレームで音を鳴らす（AudioContextポリシー回避）
-        function playNotify() {{
-            try {{
-                // 親フレームに共有AudioContextを保持（再利用で確実に鳴る）
-                if (!win._claudeAudioCtx) {{
-                    win._claudeAudioCtx = new (win.AudioContext || win.webkitAudioContext)();
-                }}
-                var ctx = win._claudeAudioCtx;
-                // suspended状態なら復帰を試みる
-                if (ctx.state === 'suspended') {{
-                    ctx.resume().then(function() {{ doBeep(ctx); }});
-                }} else {{
-                    doBeep(ctx);
-                }}
-            }} catch(e) {{
-                // フォールバック: iframe内で試行
-                try {{
-                    var ctx2 = new (window.AudioContext || window.webkitAudioContext)();
-                    ctx2.resume().then(function() {{ doBeep(ctx2); }});
-                }} catch(e2) {{}}
-            }}
-        }}
-
-        function doBeep(ctx) {{
-            function beep(freq, start, dur) {{
-                var o = ctx.createOscillator();
-                var g = ctx.createGain();
-                o.connect(g); g.connect(ctx.destination);
-                o.type = 'sine';
-                o.frequency.value = freq;
-                g.gain.setValueAtTime(0.3, ctx.currentTime + start);
-                g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
-                o.start(ctx.currentTime + start);
-                o.stop(ctx.currentTime + start + dur);
-            }}
-            beep(880, 0, 0.15);
-            beep(1100, 0.18, 0.2);
-        }}
-
-        playNotify();
-
-        // ブラウザ通知（親フレームで発火）
+        // 通知音（事前unlockされたAudioContextを使用）
         try {{
-            if ('Notification' in win) {{
-                if (win.Notification.permission === 'granted') {{
-                    new win.Notification('Claude Terminal', {{
-                        body: '{_np}',
-                        tag: 'claude-done'
-                    }});
-                }} else if (win.Notification.permission !== 'denied') {{
-                    win.Notification.requestPermission();
+            if (!window._claudeAudioCtx) {{
+                window._claudeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }}
+            var ctx = window._claudeAudioCtx;
+            function play() {{
+                function beep(freq, start, dur) {{
+                    var o = ctx.createOscillator();
+                    var g = ctx.createGain();
+                    o.connect(g); g.connect(ctx.destination);
+                    o.type = 'sine';
+                    o.frequency.value = freq;
+                    g.gain.setValueAtTime(0.3, ctx.currentTime + start);
+                    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+                    o.start(ctx.currentTime + start);
+                    o.stop(ctx.currentTime + start + dur);
                 }}
+                beep(880, 0, 0.15);
+                beep(1100, 0.18, 0.2);
+            }}
+            if (ctx.state === 'suspended') {{
+                ctx.resume().then(play);
+            }} else {{
+                play();
+            }}
+        }} catch(e) {{}}
+
+        // ブラウザ通知
+        try {{
+            if ('Notification' in window && Notification.permission === 'granted') {{
+                new Notification('Claude Terminal', {{ body: '{_np}', tag: 'claude-done' }});
             }}
         }} catch(e) {{}}
     }})();
     </script>
-    """, height=0)
+    """, unsafe_allow_html=True)
 
 
 # ── ストリーミング中のキャンセルボタン ──
