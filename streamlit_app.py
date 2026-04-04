@@ -429,6 +429,7 @@ def init_state():
         "history_total_lines": 0,                    # セッション総行数
         "pending_images": [],                        # 送信待ち画像 [{data, media_type, name}]
         "new_session_requested": False,              # 新規セッション要求フラグ（process_eventsの復元防止）
+        "persistent_mode": True,                     # 永続対話モード（1Mコンテキスト）
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -993,6 +994,13 @@ with st.sidebar:
             )
             st.session_state.selected_model = selected_model
 
+            # ── 対話モードトグル ──
+            st.session_state.persistent_mode = st.checkbox(
+                "対話モード (1M)", value=st.session_state.persistent_mode,
+                key="mob_persistent_mode",
+                help="ONで永続対話セッション（1Mコンテキスト）。OFFで従来の1回きりモード。"
+            )
+
             # ── 新規セッション / セッション状態 ──
             _has_active_session = bool(st.session_state.active_job_cwd or st.session_state.session_id)
             if _has_active_session:
@@ -1094,7 +1102,7 @@ with st.sidebar:
                     cwd_label = get_path_basename(job_cwd) if job_cwd else ""
                     created = job.get("created_at")
                     time_str = format_timestamp(created) if created else ""
-                    icon = {"running": "🔄実行中", "completed": "✅完了", "error": "❌エラー", "cancelled": "⛔中止"}.get(status, "❓")
+                    icon = {"queued": "⏳待機", "running": "🔄実行中", "completed": "✅完了", "error": "❌エラー", "cancelled": "⛔中止"}.get(status, "❓")
                     is_active = (job_id == st.session_state.current_job_id)
                     marker = ">" if is_active else ""
                     label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
@@ -1217,6 +1225,13 @@ with st.sidebar:
             )
             st.session_state.selected_model = selected_model
 
+            # ── 対話モードトグル ──
+            st.session_state.persistent_mode = st.checkbox(
+                "対話モード (1M)", value=st.session_state.persistent_mode,
+                key="desk_persistent_mode",
+                help="ONで永続対話セッション（1Mコンテキスト）。OFFで従来の1回きりモード。"
+            )
+
             # ── 作業ディレクトリ / セッション状態 ──
             _has_active_session = bool(st.session_state.active_job_cwd or st.session_state.session_id)
             if _has_active_session:
@@ -1284,7 +1299,7 @@ with st.sidebar:
                     cwd_label = get_path_basename(job_cwd) if job_cwd else ""
                     created = job.get("created_at")
                     time_str = format_timestamp(created) if created else ""
-                    icon = {"running": "🔄実行中", "completed": "✅完了", "error": "❌エラー", "cancelled": "⛔中止"}.get(status, "❓")
+                    icon = {"queued": "⏳待機", "running": "🔄実行中", "completed": "✅完了", "error": "❌エラー", "cancelled": "⛔中止"}.get(status, "❓")
                     is_active = (job_id == st.session_state.current_job_id)
                     marker = "> " if is_active else ""
                     label = f"{marker}{icon} {time_str} [{cwd_label}] {prompt_preview}"
@@ -1442,13 +1457,18 @@ with st.sidebar:
                         "cost_info": None,
                     })
                     try:
-                        result = st.session_state.client.send_prompt(
+                        _fix_func = (st.session_state.client.send_session_message
+                                     if st.session_state.persistent_mode
+                                     else st.session_state.client.send_prompt)
+                        result = _fix_func(
                             prompt=fix_prompt,
                             cwd=cwd,
                             session_id=st.session_state.session_id,
                             model=st.session_state.selected_model,
                         )
                         job_id = result.get("job_id")
+                        if result.get("session_id"):
+                            st.session_state.session_id = result["session_id"]
                         if job_id:
                             st.session_state.current_job_id = job_id
                             st.session_state.is_streaming = True
@@ -1483,13 +1503,18 @@ with st.sidebar:
                         "cost_info": None,
                     })
                     try:
-                        result = st.session_state.client.send_prompt(
+                        _fix_func = (st.session_state.client.send_session_message
+                                     if st.session_state.persistent_mode
+                                     else st.session_state.client.send_prompt)
+                        result = _fix_func(
                             prompt=fix_prompt,
                             cwd=cwd,
                             session_id=st.session_state.session_id,
                             model=st.session_state.selected_model,
                         )
                         job_id = result.get("job_id")
+                        if result.get("session_id"):
+                            st.session_state.session_id = result["session_id"]
                         if job_id:
                             st.session_state.current_job_id = job_id
                             st.session_state.is_streaming = True
@@ -1930,7 +1955,10 @@ if prompt:
             ]
         # 送信後に画像をクリア
         st.session_state.pending_images = []
-        result = st.session_state.client.send_prompt(
+        _send_func = (st.session_state.client.send_session_message
+                      if st.session_state.persistent_mode
+                      else st.session_state.client.send_prompt)
+        result = _send_func(
             prompt=prompt,
             cwd=cwd,
             session_id=st.session_state.session_id,
@@ -1938,6 +1966,9 @@ if prompt:
             images=_send_images,
         )
         job_id = result.get("job_id")
+        # 永続モードではレスポンスにsession_idが含まれる
+        if result.get("session_id"):
+            st.session_state.session_id = result["session_id"]
         if not job_id:
             st.error("ジョブIDが取得できませんでした")
             st.stop()

@@ -120,6 +120,27 @@ class BackendClient:
         resp.raise_for_status()
         return resp.json()
 
+    @_retry_on_429
+    def send_session_message(self, prompt: str, cwd: str,
+                              session_id: str = None, model: str = None,
+                              images: list = None) -> dict:
+        """永続対話セッションにメッセージを送信"""
+        payload = {"prompt": prompt, "cwd": cwd}
+        if session_id:
+            payload["session_id"] = session_id
+        if model:
+            payload["model"] = model
+        if images:
+            payload["images"] = images
+        resp = self.session.post(
+            f"{self.base_url}/api/session/message",
+            json=payload,
+            headers=self._headers(),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def stream_job(self, job_id: str):
         """SSEストリームからイベントをyieldするジェネレータ"""
         resp = self.session.get(
