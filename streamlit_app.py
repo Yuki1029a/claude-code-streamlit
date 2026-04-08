@@ -417,6 +417,7 @@ def init_state():
         "cancel_requested": False,
         "job_history": [],
         "selected_model": "claude-sonnet-4-6",  # デフォルトモデル
+        "selected_effort": "high",              # effortレベル
         "screenshot_bytes": None,               # 最新スクリーンショット
         "pc_sessions": [],                      # PCのClaude履歴セッション一覧
         "pc_sessions_loaded": False,            # 一覧取得済みフラグ
@@ -1001,6 +1002,18 @@ with st.sidebar:
                 help="ONで永続対話セッション（1Mコンテキスト）。OFFで従来の1回きりモード。"
             )
 
+            # ── Effortレベル ──
+            EFFORT_OPTIONS = {"high": "High", "max": "Max", "medium": "Medium", "low": "Low"}
+            _eff = st.selectbox(
+                "Effort", options=list(EFFORT_OPTIONS.keys()),
+                format_func=lambda x: EFFORT_OPTIONS[x],
+                index=list(EFFORT_OPTIONS.keys()).index(
+                    st.session_state.selected_effort
+                ) if st.session_state.selected_effort in EFFORT_OPTIONS else 0,
+                key="mob_effort", label_visibility="collapsed",
+            )
+            st.session_state.selected_effort = _eff
+
             # ── 新規セッション / セッション状態 ──
             _has_active_session = bool(st.session_state.active_job_cwd or st.session_state.session_id)
             if _has_active_session:
@@ -1231,6 +1244,18 @@ with st.sidebar:
                 key="desk_persistent_mode",
                 help="ONで永続対話セッション（1Mコンテキスト）。OFFで従来の1回きりモード。"
             )
+
+            # ── Effortレベル ──
+            EFFORT_OPTIONS = {"high": "High", "max": "Max", "medium": "Medium", "low": "Low"}
+            _eff = st.selectbox(
+                "Effort", options=list(EFFORT_OPTIONS.keys()),
+                format_func=lambda x: EFFORT_OPTIONS[x],
+                index=list(EFFORT_OPTIONS.keys()).index(
+                    st.session_state.selected_effort
+                ) if st.session_state.selected_effort in EFFORT_OPTIONS else 0,
+                key="desk_effort", label_visibility="collapsed",
+            )
+            st.session_state.selected_effort = _eff
 
             # ── 作業ディレクトリ / セッション状態 ──
             _has_active_session = bool(st.session_state.active_job_cwd or st.session_state.session_id)
@@ -1465,6 +1490,7 @@ with st.sidebar:
                             cwd=cwd,
                             session_id=st.session_state.session_id,
                             model=st.session_state.selected_model,
+                            effort=st.session_state.selected_effort,
                         )
                         job_id = result.get("job_id")
                         if result.get("session_id"):
@@ -1511,6 +1537,7 @@ with st.sidebar:
                             cwd=cwd,
                             session_id=st.session_state.session_id,
                             model=st.session_state.selected_model,
+                            effort=st.session_state.selected_effort,
                         )
                         job_id = result.get("job_id")
                         if result.get("session_id"):
@@ -1964,6 +1991,7 @@ if prompt:
             session_id=st.session_state.session_id,
             model=st.session_state.selected_model,
             images=_send_images,
+            effort=st.session_state.selected_effort,
         )
         job_id = result.get("job_id")
         # 永続モードではレスポンスにsession_idが含まれる
