@@ -967,6 +967,8 @@ with st.sidebar:
     if st.session_state.connected:
 
         MODEL_OPTIONS = {
+            "claude-opus-4-7":   "Opus 4.7",
+            "claude-sonnet-4-7": "Sonnet 4.7",
             "claude-opus-4-6":   "Opus 4.6",
             "claude-sonnet-4-6": "Sonnet 4.6",
             "claude-sonnet-4-5": "Sonnet 4.5",
