@@ -1495,8 +1495,9 @@ with st.sidebar:
                             effort=st.session_state.selected_effort,
                         )
                         job_id = result.get("job_id")
-                        if result.get("session_id"):
-                            st.session_state.session_id = result["session_id"]
+                        _rsid = result.get("session_id")
+                        if _rsid and not _rsid.startswith("_pending_"):
+                            st.session_state.session_id = _rsid
                         if job_id:
                             st.session_state.current_job_id = job_id
                             st.session_state.is_streaming = True
@@ -1542,8 +1543,9 @@ with st.sidebar:
                             effort=st.session_state.selected_effort,
                         )
                         job_id = result.get("job_id")
-                        if result.get("session_id"):
-                            st.session_state.session_id = result["session_id"]
+                        _rsid = result.get("session_id")
+                        if _rsid and not _rsid.startswith("_pending_"):
+                            st.session_state.session_id = _rsid
                         if job_id:
                             st.session_state.current_job_id = job_id
                             st.session_state.is_streaming = True
@@ -1997,8 +1999,9 @@ if prompt:
         )
         job_id = result.get("job_id")
         # 永続モードではレスポンスにsession_idが含まれる
-        if result.get("session_id"):
-            st.session_state.session_id = result["session_id"]
+        _rsid = result.get("session_id")
+        if _rsid and not _rsid.startswith("_pending_"):
+            st.session_state.session_id = _rsid
         if not job_id:
             st.error("ジョブIDが取得できませんでした")
             st.stop()
