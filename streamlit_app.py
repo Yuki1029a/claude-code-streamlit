@@ -525,6 +525,7 @@ def init_state():
         "job_history": [],
         "selected_model": "claude-sonnet-4-6",  # デフォルトモデル
         "selected_effort": "high",              # effortレベル
+        "use_worktree": False,                  # Git worktreeを使用するか
         "screenshot_bytes": None,               # 最新スクリーンショット
         "pc_sessions": [],                      # PCのClaude履歴セッション一覧
         "pc_sessions_loaded": False,            # 一覧取得済みフラグ
@@ -1063,6 +1064,8 @@ with st.sidebar:
     if st.session_state.connected:
 
         MODEL_OPTIONS = {
+            "claude-opus-4-8":   "Opus 4.8",
+            "claude-sonnet-4-8": "Sonnet 4.8",
             "claude-opus-4-7":   "Opus 4.7",
             "claude-sonnet-4-7": "Sonnet 4.7",
             "claude-opus-4-6":   "Opus 4.6",
@@ -1111,6 +1114,13 @@ with st.sidebar:
                 key="mob_effort", label_visibility="collapsed",
             )
             st.session_state.selected_effort = _eff
+
+            # ── Worktree（Git worktreeで並行ブランチ作業） ──
+            st.session_state.use_worktree = st.checkbox(
+                "Git worktree", value=st.session_state.use_worktree,
+                key="mob_worktree",
+                help="新しいGit worktreeで作業（並行ブランチ。リポジトリ内ディレクトリで有効）",
+            )
 
             # ── 新規セッション / セッション状態 ──
             _has_active_session = bool(st.session_state.active_job_cwd or st.session_state.session_id)
@@ -1355,6 +1365,13 @@ with st.sidebar:
             )
             st.session_state.selected_effort = _eff
 
+            # ── Worktree（Git worktreeで並行ブランチ作業） ──
+            st.session_state.use_worktree = st.checkbox(
+                "Git worktree", value=st.session_state.use_worktree,
+                key="desk_worktree",
+                help="新しいGit worktreeで作業（並行ブランチ。リポジトリ内ディレクトリで有効）",
+            )
+
             # ── 作業ディレクトリ / セッション状態 ──
             _has_active_session = bool(st.session_state.active_job_cwd or st.session_state.session_id)
             if _has_active_session:
@@ -1589,6 +1606,7 @@ with st.sidebar:
                             session_id=st.session_state.session_id,
                             model=st.session_state.selected_model,
                             effort=st.session_state.selected_effort,
+                            worktree=st.session_state.use_worktree,
                         )
                         job_id = result.get("job_id")
                         _rsid = result.get("session_id")
@@ -1637,6 +1655,7 @@ with st.sidebar:
                             session_id=st.session_state.session_id,
                             model=st.session_state.selected_model,
                             effort=st.session_state.selected_effort,
+                            worktree=st.session_state.use_worktree,
                         )
                         job_id = result.get("job_id")
                         _rsid = result.get("session_id")
@@ -2092,6 +2111,7 @@ if prompt:
             model=st.session_state.selected_model,
             images=_send_images,
             effort=st.session_state.selected_effort,
+            worktree=st.session_state.use_worktree,
         )
         job_id = result.get("job_id")
         # 永続モードではレスポンスにsession_idが含まれる

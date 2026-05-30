@@ -124,7 +124,8 @@ class BackendClient:
     @_retry_on_429
     def send_prompt(self, prompt: str, cwd: str,
                     session_id: str = None, model: str = None,
-                    images: list = None, effort: str = None) -> dict:
+                    images: list = None, effort: str = None,
+                    worktree: bool = False) -> dict:
         """プロンプトを送信してジョブを作成"""
         payload = {"prompt": prompt, "cwd": cwd}
         if session_id:
@@ -135,6 +136,8 @@ class BackendClient:
             payload["images"] = images
         if effort:
             payload["effort"] = effort
+        if worktree:
+            payload["worktree"] = True
         resp = self.session.post(
             f"{self.base_url}/api/prompt",
             json=payload,
@@ -147,7 +150,8 @@ class BackendClient:
     @_retry_on_429
     def send_session_message(self, prompt: str, cwd: str,
                               session_id: str = None, model: str = None,
-                              images: list = None, effort: str = None) -> dict:
+                              images: list = None, effort: str = None,
+                              worktree: bool = False) -> dict:
         """永続対話セッションにメッセージを送信"""
         payload = {"prompt": prompt, "cwd": cwd}
         if session_id:
@@ -158,6 +162,8 @@ class BackendClient:
             payload["images"] = images
         if effort:
             payload["effort"] = effort
+        if worktree:
+            payload["worktree"] = True
         resp = self.session.post(
             f"{self.base_url}/api/session/message",
             json=payload,
