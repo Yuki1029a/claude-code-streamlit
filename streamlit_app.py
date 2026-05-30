@@ -438,6 +438,28 @@ def init_state():
 
 init_state()
 
+# ─── QR/ディープリンク自動ログイン ───────────────────────────
+# URLパラメータ ?u=NGROK_URL&t=AUTH_TOKEN で自動接続
+if not st.session_state.connected:
+    _qp = st.query_params
+    _qp_url = _qp.get("u")
+    _qp_token = _qp.get("t")
+    if _qp_url and _qp_token and st.session_state.client is None:
+        try:
+            _client = BackendClient(_qp_url)
+            ok, msg = _client.login(_qp_token)
+            if ok:
+                st.session_state.client = _client
+                st.session_state.connected = True
+                # URLパラメータをクリアして再共有時の漏洩防止
+                try:
+                    st.query_params.clear()
+                except Exception:
+                    pass
+                st.rerun()
+        except Exception:
+            pass
+
 # ─── is_streaming スタック検出 ─────────────────────────────
 # ストリーミング中にワーカースレッドが存在しない場合のみチェック
 # （非ブロッキングリランでは毎回API呼び出ししないよう、ワーカーの有無で判断）
