@@ -86,6 +86,28 @@ class BackendClient:
             h["X-CSRF-Token"] = self.csrf_token
         return h
 
+    # --- QRデバイス認可（未認証で叩ける） ---
+
+    @_retry_on_429
+    def pair_start(self) -> dict:
+        """ペアリングコードを発行 → {code, approve_url}"""
+        resp = self.session.post(
+            f"{self.base_url}/auth/pair/start",
+            json={}, timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    @_retry_on_429
+    def pair_poll(self, code: str) -> dict:
+        """承認状態をポーリング → {approved, token?, ngrok?, expired?}"""
+        resp = self.session.post(
+            f"{self.base_url}/auth/pair/poll",
+            json={"code": code}, timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     # --- ディレクトリ ---
 
     @_retry_on_429

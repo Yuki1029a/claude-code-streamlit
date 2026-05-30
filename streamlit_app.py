@@ -20,6 +20,9 @@ import streamlit as st
 
 from backend_client import BackendClient
 
+# ngrok固定ドメイン（公開情報。秘密はAUTH_TOKENのみ）
+NGROK_PUBLIC_URL = "https://eugene-unfretted-unlibellously.ngrok-free.dev"
+
 # ─── ページ設定 ───────────────────────────────────────────
 st.set_page_config(
     page_title="CLAUDE TERMINAL v2.0",
@@ -400,6 +403,110 @@ hr {
 """, unsafe_allow_html=True)
 
 
+def add_session(sid: str):
+    """セッションIDをリストに追加（重複なし）"""
+    if sid and sid not in st.session_state.sessions:
+        st.session_state.sessions.append(sid)
+
+
+def _post_connect(client):
+    """接続成功後の共通処理（ディレクトリ・ジョブ履歴の取得）。
+    トークン接続・QR承認・自動ログインで共通利用。"""
+    st.session_state.client = client
+    st.session_state.connected = True
+    try:
+        dirs = client.get_directories()
+        st.session_state.directories = dirs
+        flat = []
+        for group_dirs in dirs.values():
+            flat.extend(group_dirs)
+        st.session_state.flat_dirs = flat
+        if flat and not st.session_state.selected_dir:
+            st.session_state.selected_dir = flat[0]
+    except Exception:
+        pass
+    try:
+        jobs = client.list_jobs()
+        st.session_state.job_history = jobs
+        for job in jobs:
+            sid = job.get("session_id_out")
+            if sid:
+                add_session(sid)
+        st.session_state.recovery_checked = False
+    except Exception:
+        pass
+
+
+def _render_qr_login():
+    """方式2: QRデバイス認可UI（PC向け）。
+    ペアリング開始 → QR表示 → スマホ承認をポーリング。"""
+    import time as _time
+    import io as _io
+    # ペアリングコードが未取得なら開始
+    if not st.session_state.get("pairing_code"):
+        if st.button("QRログイン開始", use_container_width=True, key="qr_start"):
+            try:
+                _c = BackendClient(NGROK_PUBLIC_URL)
+                res = _c.pair_start()
+                st.session_state.pairing_code = res.get("code")
+                st.session_state.pairing_url = res.get("approve_url")
+                st.session_state.pairing_started = _time.time()
+                st.rerun()
+            except Exception as e:
+                st.error(f"開始失敗: {e}")
+        st.caption("スマホ（登録済み）でQRを読み取り、指紋認証で承認します。")
+        return
+
+    # QR表示
+    try:
+        import qrcode
+        qr = qrcode.QRCode(border=2, box_size=8)
+        qr.add_data(st.session_state.pairing_url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buf = _io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        st.image(buf, caption="スマホで読み取り → 指紋認証")
+    except Exception as e:
+        st.error(f"QR生成失敗: {e}")
+
+    # 期限チェック（180秒）
+    elapsed = _time.time() - st.session_state.get("pairing_started", 0)
+    if elapsed > 180:
+        st.warning("QRの有効期限が切れました。再発行してください。")
+        if st.button("再発行", use_container_width=True, key="qr_reissue"):
+            st.session_state.pairing_code = None
+            st.rerun()
+        return
+
+    # ポーリング
+    try:
+        _c = BackendClient(NGROK_PUBLIC_URL)
+        poll = _c.pair_poll(st.session_state.pairing_code)
+        if poll.get("approved") and poll.get("token"):
+            client = BackendClient(poll.get("ngrok", NGROK_PUBLIC_URL))
+            ok, msg = client.login(poll["token"])
+            if ok:
+                _post_connect(client)
+                st.session_state.pairing_code = None
+                st.rerun()
+            else:
+                st.error(msg)
+        elif poll.get("expired"):
+            st.session_state.pairing_code = None
+            st.rerun()
+    except Exception:
+        pass
+
+    st.caption(f"承認待ち... （残り {max(0, int(180 - elapsed))}秒）")
+    if st.button("キャンセル", use_container_width=True, key="qr_cancel"):
+        st.session_state.pairing_code = None
+        st.rerun()
+    _time.sleep(2)
+    st.rerun()
+
+
 # ─── セッションステート初期化 ─────────────────────────────
 def init_state():
     """初回のみ実行"""
@@ -431,6 +538,9 @@ def init_state():
         "pending_images": [],                        # 送信待ち画像 [{data, media_type, name}]
         "new_session_requested": False,              # 新規セッション要求フラグ（process_eventsの復元防止）
         "persistent_mode": True,                     # 永続対話モード（1Mコンテキスト）
+        "pairing_code": None,                        # QRログイン: ペアリングコード
+        "pairing_url": None,                         # QRログイン: 承認URL
+        "pairing_started": 0,                        # QRログイン: 開始時刻
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -449,8 +559,7 @@ if not st.session_state.connected:
             _client = BackendClient(_qp_url)
             ok, msg = _client.login(_qp_token)
             if ok:
-                st.session_state.client = _client
-                st.session_state.connected = True
+                _post_connect(_client)
                 # URLパラメータをクリアして再共有時の漏洩防止
                 try:
                     st.query_params.clear()
@@ -538,12 +647,6 @@ def _validate_session_id(session_id: str) -> bool:
         return False
     import re
     return bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', session_id, re.IGNORECASE))
-
-
-def add_session(sid: str):
-    """セッションIDをリストに追加（重複なし）"""
-    if sid and sid not in st.session_state.sessions:
-        st.session_state.sessions.append(sid)
 
 
 def parse_tool_input_display(raw: str) -> str:
@@ -878,101 +981,72 @@ with st.sidebar:
         st.caption("█ SYSTEM READY █")
         st.divider()
 
-    # ── 接続設定 ──
-    st.subheader("接続設定" if IS_MOBILE else "接続設定")
-
-    ngrok_url = st.text_input(
-        "ngrok URL",
-        placeholder="https://xxxx.ngrok-free.app",
-        help="Flask バックエンドの ngrok URL",
-        label_visibility="collapsed" if IS_MOBILE else "visible",
-    )
-    if IS_MOBILE:
-        st.caption("ngrok URL")
-
-    # AUTH_TOKEN: secretsから取得、なければ手動入力
-    default_token = ""
-    try:
-        default_token = st.secrets.get("AUTH_TOKEN", "")
-    except Exception:
-        pass
-
-    auth_token = st.text_input(
-        "Auth Token",
-        value=default_token,
-        type="password",
-        help="Flask バックエンドの認証トークン",
-        label_visibility="collapsed" if IS_MOBILE else "visible",
-    )
-    if IS_MOBILE:
-        st.caption("Auth Token")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        connect_label = ("接続" if IS_MOBILE else "接続") if not st.session_state.connected else ("再接続" if IS_MOBILE else "再接続")
-        connect_btn = st.button(connect_label, use_container_width=True)
-    with col2:
-        disconnect_label = "切断" if IS_MOBILE else "切断"
-        disconnect_btn = st.button(
-            disconnect_label,
-            disabled=not st.session_state.connected,
-            use_container_width=True,
+    # ── ログイン（未接続時は3方式、接続済みは切断のみ） ──
+    if not st.session_state.connected:
+        st.subheader("ログイン")
+        _methods = ["トークン", "QRログイン", "指紋ログイン"]
+        _default_idx = 2 if IS_MOBILE else 1
+        _method = st.radio(
+            "方式", _methods, index=_default_idx,
+            horizontal=True, label_visibility="collapsed", key="login_method",
         )
 
-    # 接続処理
-    if connect_btn:
-        if not ngrok_url:
-            st.error("ngrok URLを入力してください")
-        elif not auth_token:
-            st.error("Auth Tokenを入力してください")
-        else:
-            if not re.match(r"https?://.*\.(ngrok-free\.app|ngrok\.io|ngrok\.app)", ngrok_url):
-                st.warning("ngrokドメイン以外のURLです")
-
-            with st.spinner("接続中..."):
-                client = BackendClient(ngrok_url)
-                ok, msg = client.login(auth_token)
-                if ok:
-                    st.session_state.client = client
-                    st.session_state.connected = True
-                    try:
-                        dirs = client.get_directories()
-                        st.session_state.directories = dirs
-                        flat = []
-                        for group_dirs in dirs.values():
-                            flat.extend(group_dirs)
-                        st.session_state.flat_dirs = flat
-                        if flat and not st.session_state.selected_dir:
-                            st.session_state.selected_dir = flat[0]
-                    except Exception:
-                        pass
-                    try:
-                        jobs = client.list_jobs()
-                        st.session_state.job_history = jobs
-                        for job in jobs:
-                            sid = job.get("session_id_out")
-                            if sid:
-                                add_session(sid)
-                        # ジョブ復帰チェックをリセット
-                        st.session_state.recovery_checked = False
-                    except Exception:
-                        pass
-                    st.success(msg)
-                    st.rerun()
+        # ── 方式1: トークン入力 ──
+        if _method == "トークン":
+            ngrok_url = st.text_input(
+                "ngrok URL", value=NGROK_PUBLIC_URL,
+                placeholder="https://xxxx.ngrok-free.app",
+                label_visibility="collapsed" if IS_MOBILE else "visible",
+            )
+            default_token = ""
+            try:
+                default_token = st.secrets.get("AUTH_TOKEN", "")
+            except Exception:
+                pass
+            auth_token = st.text_input(
+                "Auth Token", value=default_token, type="password",
+                label_visibility="collapsed" if IS_MOBILE else "visible",
+            )
+            if st.button("接続", use_container_width=True, key="token_connect"):
+                if not ngrok_url:
+                    st.error("ngrok URLを入力してください")
+                elif not auth_token:
+                    st.error("Auth Tokenを入力してください")
                 else:
-                    st.error(msg)
+                    with st.spinner("接続中..."):
+                        client = BackendClient(ngrok_url)
+                        ok, msg = client.login(auth_token)
+                        if ok:
+                            _post_connect(client)
+                            st.rerun()
+                        else:
+                            st.error(msg)
 
-    # 切断処理
-    if disconnect_btn:
-        st.session_state.client = None
-        st.session_state.connected = False
-        st.session_state.messages = []
-        st.session_state.directories = {}
-        st.session_state.flat_dirs = []
-        st.session_state.session_id = None
-        st.session_state.sessions = []
-        st.session_state.job_history = []
-        st.rerun()
+        # ── 方式2: QRログイン（Phase 3で実装） ──
+        elif _method == "QRログイン":
+            _render_qr_login()
+
+        # ── 方式3: 指紋ログイン ──
+        elif _method == "指紋ログイン":
+            st.caption("登録済みの指紋 / Face ID でログインします。")
+            st.link_button("指紋でログイン", f"{NGROK_PUBLIC_URL}/auth/bio",
+                           use_container_width=True)
+            st.divider()
+            st.caption("初回のみ: PCでトークンログイン後、このデバイスを登録してください。")
+            st.link_button("パスキーを登録", f"{NGROK_PUBLIC_URL}/auth/register",
+                           use_container_width=True)
+    else:
+        # 接続済み: 切断ボタンのみ
+        if st.button("切断", use_container_width=True, key="disconnect"):
+            st.session_state.client = None
+            st.session_state.connected = False
+            st.session_state.messages = []
+            st.session_state.directories = {}
+            st.session_state.flat_dirs = []
+            st.session_state.session_id = None
+            st.session_state.sessions = []
+            st.session_state.job_history = []
+            st.rerun()
 
     # 接続状態バッジ
     if st.session_state.connected:
