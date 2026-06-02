@@ -1065,16 +1065,12 @@ with st.sidebar:
 
         MODEL_OPTIONS = {
             "claude-opus-4-8":   "Opus 4.8",
-            "claude-sonnet-4-8": "Sonnet 4.8",
             "claude-opus-4-7":   "Opus 4.7",
-            "claude-sonnet-4-7": "Sonnet 4.7",
             "claude-opus-4-6":   "Opus 4.6",
             "claude-sonnet-4-6": "Sonnet 4.6",
-            "claude-sonnet-4-5": "Sonnet 4.5",
             "claude-opus-4-5":   "Opus 4.5",
+            "claude-sonnet-4-5": "Sonnet 4.5",
             "claude-haiku-4-5":  "Haiku 4.5",
-            "claude-opus-4":     "Opus 4",
-            "claude-sonnet-4":   "Sonnet 4",
         }
 
         if IS_MOBILE:
