@@ -757,6 +757,40 @@ def process_native_events(events: list) -> list:
     return messages
 
 
+def _clear_streaming_state():
+    """ストリーミングワーカーを停止し、関連 session_state を全クリアする。
+    セッション/ジョブ切替・キャンセル・新規送信などで共通利用。"""
+    _old = st.session_state.get("_stream_stop")
+    if _old:
+        _old.set()
+    for _k in ("_stream_queue", "_stream_stop", "_stream_text",
+               "_stream_tools", "_stream_pending_tool", "_stream_all_events",
+               "_stream_errors", "_stream_cost_info", "_stream_done"):
+        st.session_state.pop(_k, None)
+    st.session_state.is_streaming = False
+
+
+def _recover_session(sid):
+    """セッションIDで復帰し、初回履歴を自動ロードする。
+    ID指定復帰ボタンで共通利用。"""
+    if st.session_state.is_streaming:
+        _clear_streaming_state()
+    add_session(sid)
+    st.session_state.session_id = sid
+    st.session_state.messages = []
+    st.session_state.history_offset = 0
+    st.session_state.history_has_more = False
+    # 初回履歴を自動ロード（末尾50行）
+    try:
+        data = st.session_state.client.get_session_events(sid, limit=50, offset=0)
+        st.session_state.messages = process_native_events(data.get("events", []))
+        st.session_state.history_offset = 50
+        st.session_state.history_has_more = data.get("has_more", False)
+        st.session_state.history_total_lines = data.get("total_lines", 0)
+    except Exception:
+        pass
+
+
 # ─── ストリーミング処理 ────────────────────────────────────
 
 def _poll_fallback(client: BackendClient, job_id: str,
@@ -1304,21 +1338,8 @@ with st.sidebar:
                              disabled=not _manual_sid):
                     _sid = _manual_sid.strip()
                     if _validate_session_id(_sid):
-                        if st.session_state.is_streaming:
-                            _old_stop = st.session_state.get("_stream_stop")
-                            if _old_stop:
-                                _old_stop.set()
-                            for _k in ("_stream_queue", "_stream_stop", "_stream_text",
-                                        "_stream_tools", "_stream_pending_tool",
-                                        "_stream_all_events", "_stream_errors",
-                                        "_stream_cost_info", "_stream_done"):
-                                st.session_state.pop(_k, None)
-                            st.session_state.is_streaming = False
-                        add_session(_sid)
-                        st.session_state.session_id = _sid
-                        st.session_state.messages = []
-                        st.session_state.history_offset = 0
-                        st.session_state.history_has_more = False
+                        with st.spinner("履歴を読み込み中..."):
+                            _recover_session(_sid)
                         st.rerun()
                     else:
                         st.error("無効なUUID形式です")
@@ -1546,21 +1567,8 @@ with st.sidebar:
                              disabled=not _manual_sid_d):
                     _sid = _manual_sid_d.strip()
                     if _validate_session_id(_sid):
-                        if st.session_state.is_streaming:
-                            _old_stop = st.session_state.get("_stream_stop")
-                            if _old_stop:
-                                _old_stop.set()
-                            for _k in ("_stream_queue", "_stream_stop", "_stream_text",
-                                        "_stream_tools", "_stream_pending_tool",
-                                        "_stream_all_events", "_stream_errors",
-                                        "_stream_cost_info", "_stream_done"):
-                                st.session_state.pop(_k, None)
-                            st.session_state.is_streaming = False
-                        add_session(_sid)
-                        st.session_state.session_id = _sid
-                        st.session_state.messages = []
-                        st.session_state.history_offset = 0
-                        st.session_state.history_has_more = False
+                        with st.spinner("履歴を読み込み中..."):
+                            _recover_session(_sid)
                         st.rerun()
                     else:
                         st.error("無効なUUID形式です")
