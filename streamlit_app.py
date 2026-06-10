@@ -523,7 +523,7 @@ def init_state():
         "is_streaming": False,
         "cancel_requested": False,
         "job_history": [],
-        "selected_model": "claude-sonnet-4-6",  # デフォルトモデル
+        "selected_model": "claude-fable-5",  # デフォルトモデル
         "selected_effort": "high",              # effortレベル
         "use_worktree": False,                  # Git worktreeを使用するか
         "screenshot_bytes": None,               # 最新スクリーンショット
@@ -986,9 +986,8 @@ with st.sidebar:
     if not st.session_state.connected:
         st.subheader("ログイン")
         _methods = ["トークン", "QRログイン", "指紋ログイン"]
-        _default_idx = 2 if IS_MOBILE else 1
         _method = st.radio(
-            "方式", _methods, index=_default_idx,
+            "方式", _methods, index=0,
             horizontal=True, label_visibility="collapsed", key="login_method",
         )
 
@@ -1064,6 +1063,7 @@ with st.sidebar:
     if st.session_state.connected:
 
         MODEL_OPTIONS = {
+            "claude-fable-5":    "Fable 5",
             "claude-opus-4-8":   "Opus 4.8",
             "claude-opus-4-7":   "Opus 4.7",
             "claude-opus-4-6":   "Opus 4.6",
