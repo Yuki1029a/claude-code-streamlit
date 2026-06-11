@@ -2131,7 +2131,14 @@ if prompt:
         st.session_state.cancel_requested = False
 
     except Exception as e:
-        st.error(f"プロンプト送信エラー: {e}")
+        _detail = ""
+        _resp = getattr(e, "response", None)
+        if _resp is not None:
+            try:
+                _detail = _resp.json().get("error", "")
+            except Exception:
+                _detail = ""
+        st.error(f"プロンプト送信エラー: {_detail or e}")
         st.stop()
 
 # ── ストリーミング開始（新プロンプト送信時のワーカー起動） ──
