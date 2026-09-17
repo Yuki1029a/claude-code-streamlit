@@ -787,6 +787,13 @@ def _recover_session(sid):
         st.session_state.history_offset = 50
         st.session_state.history_has_more = data.get("has_more", False)
         st.session_state.history_total_lines = data.get("total_lines", 0)
+        # 作業ディレクトリをセッション本来の cwd に合わせる。
+        # これがズレると --resume が失敗し対話できなくなるため重要。
+        _scwd = data.get("cwd")
+        if _scwd:
+            st.session_state.active_job_cwd = _scwd
+            if _scwd in st.session_state.flat_dirs:
+                st.session_state.selected_dir = _scwd
     except Exception:
         pass
 
@@ -1097,13 +1104,10 @@ with st.sidebar:
     if st.session_state.connected:
 
         MODEL_OPTIONS = {
+            "claude-opus-5":     "Opus 5",
+            "claude-sonnet-5":   "Sonnet 5",
             "claude-fable-5":    "Fable 5",
             "claude-opus-4-8":   "Opus 4.8",
-            "claude-opus-4-7":   "Opus 4.7",
-            "claude-opus-4-6":   "Opus 4.6",
-            "claude-sonnet-4-6": "Sonnet 4.6",
-            "claude-opus-4-5":   "Opus 4.5",
-            "claude-sonnet-4-5": "Sonnet 4.5",
             "claude-haiku-4-5":  "Haiku 4.5",
         }
 
